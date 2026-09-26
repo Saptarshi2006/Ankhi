@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -43,3 +41,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Source media for the timeline. Real photos and clips are far too large to
+# commit; they live here by convention and are processed at build time.
+# See content/years.ts for the filename pattern.
+/content/media/
