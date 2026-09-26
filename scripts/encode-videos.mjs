@@ -14,7 +14,7 @@
  */
 import { execFile } from "node:child_process";
 import { mkdir, readdir, stat } from "node:fs/promises";
-import { join, dirname, extname, basename } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { beats } from "../content/years.ts";
@@ -67,7 +67,6 @@ for (const beat of clips) {
   const { id, startSec, endSec } = beat.clip;
   const source = join(MEDIA, `${id}.mp4`);
 
-  let duration;
   try {
     await stat(source);
   } catch {
