@@ -42,7 +42,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Source media for the timeline. Real photos and clips are far too large to
-# commit; they live here by convention and are processed at build time.
-# See content/years.ts for the filename pattern.
+# Timeline media. All of it is generated: the sources are committed nowhere
+# (far too large), and the processed output is rebuilt from them. `npm run
+# media` regenerates, and `npm run build` depends on it, so nothing is ever
+# missing — but none of it belongs in history. See content/years.ts for the
+# filename convention.
 /content/media/
+/public/photos/
+/public/videos/

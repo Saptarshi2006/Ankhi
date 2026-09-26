@@ -4,7 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "media:placeholders": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-placeholders.mjs",
+    "media:images": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/optimize-images.mjs",
+    "media:videos": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/encode-videos.mjs",
+    "media": "npm run media:placeholders && npm run media:images && npm run media:videos",
+    "build": "npm run media && next build",
     "serve": "node scripts/serve.mjs out",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
