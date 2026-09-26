@@ -100,7 +100,7 @@ export default function Timeline() {
             className="track-scroll flex h-full min-w-0 items-center will-change-transform"
           >
             {beats.map((beat, index) => (
-              <Beat key={beat.year} beat={beat} index={index} priority={index === 0} />
+              <Beat key={beat.year} beat={beat} index={index} />
             ))}
             <div className="w-[6vw] shrink-0" aria-hidden="true" />
           </div>

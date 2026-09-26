@@ -30,13 +30,11 @@ export default function YearMedia({
   photos,
   clip,
   filter,
-  priority,
 }: {
   photos: Photo[];
   clip?: Clip;
   /** CSS `filter` value, or undefined for the one beat in full colour. */
   filter?: string;
-  priority?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [ready, setReady] = useState(false);
@@ -114,7 +112,12 @@ export default function YearMedia({
             muted
             loop
             playsInline
-            preload={priority ? "auto" : "none"}
+            // Never preloaded. Every clip lives inside a pinned horizontal
+            // section thousands of pixels below the fold, so preloading the
+            // first one just makes it compete with the fonts and the bundle
+            // for bandwidth on load. The observer below loads it when its
+            // panel actually approaches.
+            preload="none"
             onCanPlay={() => setReady(true)}
             aria-label={`Video from age ${photos.length}`}
           >

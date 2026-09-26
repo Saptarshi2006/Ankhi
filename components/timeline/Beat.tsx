@@ -11,15 +11,7 @@ import YearMedia from "./YearMedia";
  *
  * `pt` clears the rail at the top; `pb` clears the signature at the bottom.
  */
-export default function Beat({
-  beat,
-  index,
-  priority,
-}: {
-  beat: Beat;
-  index: number;
-  priority?: boolean;
-}) {
+export default function Beat({ beat, index }: { beat: Beat; index: number }) {
   return (
     <article
       data-beat={index}
@@ -55,7 +47,6 @@ export default function Beat({
           // One beat stays in full colour, deliberately: the only one not
           // tinted, which is what marks the move from her past to the present.
           filter={beat.fullColour ? undefined : `url(#duotone-${index})`}
-          priority={priority}
         />
       </div>
     </article>

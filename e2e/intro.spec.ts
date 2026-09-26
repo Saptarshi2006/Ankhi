@@ -430,6 +430,14 @@ test.describe("deploy config", () => {
 
     expect(headers).toContain("/_next/static/*");
     expect(headers).toMatch(/Cache-Control:\s*public, max-age=31536000, immutable/);
+    /*
+     * Timeline media is cached hard, but for a fixed window rather than
+     * immutably: the URLs are derived from the source filename, so replacing a
+     * source does not change an already-cached URL.
+     */
+    expect(headers).toContain("/photos/*");
+    expect(headers).toContain("/videos/*");
+    expect(headers).toMatch(/Cache-Control:\s*public, max-age=2592000/);
   });
 
   test("wrangler deploys assets only, with no Worker script", () => {

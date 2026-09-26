@@ -17,3 +17,14 @@
 
 /favicon.ico
   Cache-Control: public, max-age=86400
+
+# Timeline media. Cached hard, but for a fixed window rather than immutably:
+# these filenames are derived from the source (`y1-a.jpg` -> `y1-a-1200.webp`),
+# so replacing a source file does not change the URL that was already cached.
+# Thirty days is the compromise. When you swap real media in, either rename the
+# source or purge the cache, or the old clip keeps being served until it lapses.
+/photos/*
+  Cache-Control: public, max-age=2592000
+
+/videos/*
+  Cache-Control: public, max-age=2592000
