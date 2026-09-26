@@ -4,114 +4,138 @@ import { useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
-import { useAllowMotion } from "@/lib/motion-pref";
 import { site } from "@/content/site";
+import { STAGE, at } from "@/lib/stage-ranges";
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
  * Phases D–E: "Happy 19th" arrives, splits, travels to opposite edges, holds,
- * then fades as the letter takes over.
+ * then fades as the frame scrolls away.
  *
- * One scrubbed timeline rather than several triggers, so the arrival, the
- * split, and the fade are a single continuous gesture instead of three
- * independently-timed animations.
+ * Renders inside the stage's sticky viewport, so it shares a frame with the
+ * balloon and the frame is never empty while pinned.
+ *
+ * Three separate triggers rather than one timeline, because the phases are
+ * absolute ranges within a long stage and a timeline can only carry one
+ * scrollTrigger.
  */
 export default function TitleSpread() {
-  const sectionRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const leftRef = useRef<HTMLSpanElement>(null);
   const rightRef = useRef<HTMLSpanElement>(null);
-  const allowMotion = useAllowMotion();
 
-  useGSAP(
-    () => {
-      if (!allowMotion) return;
+  useGSAP(() => {
+    /*
+     * Derive the stage from our own element rather than taking the section ref
+     * as a prop. A child's layout effect runs *before* the ancestor's ref is
+     * attached, so an injected ref is still null at this point and every
+     * trigger would silently fall back to doing nothing.
+     */
+    const trigger = titleRef.current?.closest<HTMLElement>(".track-stage") ?? null;
+    if (!trigger) return;
 
-      /**
-       * How far each word must travel to sit against its edge.
-       *
-       * Derived from `offsetLeft` / `offsetWidth` on purpose. Those are
-       * layout coordinates and are immune to transforms, and this timeline
-       * scales the heading as it arrives — so measuring with
-       * `getBoundingClientRect()` (or reasoning about the rendered width)
-       * reads a value that changes mid-flight and throws the destination
-       * past the viewport edge.
-       *
-       * The heading is centred, so its untransformed left edge is
-       * `(viewport - headingWidth) / 2`, and by the time the spread runs the
-       * scale has settled to 1. That makes the arithmetic exact.
-       */
-      const travelTo = (el: HTMLSpanElement | null, edge: "left" | "right") => () => {
-        const title = titleRef.current;
-        if (!el || !title) return 0;
-        const pad = window.innerWidth < 640 ? 20 : 48;
-        const titleLeft = (window.innerWidth - title.offsetWidth) / 2;
-        return edge === "left"
-          ? pad - (titleLeft + el.offsetLeft)
-          : window.innerWidth - pad - (titleLeft + el.offsetLeft + el.offsetWidth);
-      };
+    /**
+     * How far each word must travel to sit against its edge.
+     *
+     * Derived from `offsetLeft` / `offsetWidth` on purpose. Those are layout
+     * coordinates and are immune to transforms, and the heading is scaled as
+     * it arrives — so measuring with `getBoundingClientRect()` reads a value
+     * that changes mid-flight and throws the destination past the viewport
+     * edge.
+     *
+     * The heading is centred, so its untransformed left edge is
+     * `(viewport - headingWidth) / 2`, and by the time the spread runs the
+     * scale has settled to 1. That makes the arithmetic exact.
+     */
+    const travelTo = (el: HTMLSpanElement | null, edge: "left" | "right") => () => {
+      const title = titleRef.current;
+      if (!el || !title) return 0;
+      const pad = window.innerWidth < 640 ? 20 : 48;
+      const titleLeft = (window.innerWidth - title.offsetWidth) / 2;
+      return edge === "left"
+        ? pad - (titleLeft + el.offsetLeft)
+        : window.innerWidth - pad - (titleLeft + el.offsetLeft + el.offsetWidth);
+    };
 
-      const tl = gsap.timeline({
+    const base = { trigger, invalidateOnRefresh: true };
+
+    // D — arrival.
+    gsap.fromTo(
+      titleRef.current,
+      { scale: 0.62, opacity: 0 },
+      {
+        scale: 1,
+        opacity: 1,
+        ease: "power2.out",
         scrollTrigger: {
-          trigger: sectionRef.current,
-          start: "top top",
-          end: "bottom bottom",
-          scrub: 0.5,
-          invalidateOnRefresh: true,
+          ...base,
+          start: at(trigger, STAGE.titleIn),
+          end: at(trigger, STAGE.titleInEnd),
+          scrub: 0.4,
         },
-      });
+      },
+    );
 
-      tl.fromTo(
-        titleRef.current,
-        { scale: 0.62, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.16, ease: "power2.out" },
-        0,
-      )
-        .to(
-          leftRef.current,
-          {
-            x: travelTo(leftRef.current, "left"),
-            rotate: -5,
-            duration: 0.52,
-            ease: "power2.inOut",
-          },
-          0.18,
-        )
-        .to(
-          rightRef.current,
-          {
-            x: travelTo(rightRef.current, "right"),
-            rotate: 5,
-            duration: 0.52,
-            ease: "power2.inOut",
-          },
-          0.18,
-        )
-        .to(
-          [leftRef.current, rightRef.current],
-          { opacity: 0, duration: 0.14, ease: "power1.in" },
-          0.86,
-        );
-    },
-    { scope: sectionRef, dependencies: [allowMotion] },
-  );
+    // E — spread to the edges, with a slight outward tilt.
+    gsap.to(
+      leftRef.current,
+      {
+        x: travelTo(leftRef.current, "left"),
+        rotate: -5,
+        ease: "power2.inOut",
+        scrollTrigger: {
+          ...base,
+          start: at(trigger, STAGE.titleInEnd),
+          end: at(trigger, STAGE.spreadEnd),
+          scrub: 0.5,
+        },
+      },
+    );
+
+    gsap.to(
+      rightRef.current,
+      {
+        x: travelTo(rightRef.current, "right"),
+        rotate: 5,
+        ease: "power2.inOut",
+        scrollTrigger: {
+          ...base,
+          start: at(trigger, STAGE.titleInEnd),
+          end: at(trigger, STAGE.spreadEnd),
+          scrub: 0.5,
+        },
+      },
+    );
+
+    /*
+     * Fade across the un-pin tail only. Fading any earlier leaves the frame
+     * empty while it is still pinned, which is the gap this component used to
+     * have above it when scrolling back up.
+     */
+    gsap.to([leftRef.current, rightRef.current], {
+      opacity: 0,
+      ease: "power1.in",
+      scrollTrigger: {
+        trigger,
+        start: at(trigger, STAGE.pinnedEnd),
+        end: "bottom bottom",
+        scrub: true,
+      },
+    });
+  });
 
   return (
-    <section ref={sectionRef} className="track-title relative">
-      <div className="sticky-viewport grid place-items-center">
-        <h1
-          ref={titleRef}
-          className="font-display text-[clamp(2.6rem,13vw,9rem)] leading-none tracking-tight text-accent-soft will-change-transform"
-        >
-          <span ref={leftRef} className="inline-block will-change-transform">
-            {site.titleLeft}
-          </span>{" "}
-          <span ref={rightRef} className="inline-block will-change-transform">
-            {site.titleRight}
-          </span>
-        </h1>
-      </div>
-    </section>
+    <h1
+      ref={titleRef}
+      className="col-start-1 row-start-1 font-display text-[clamp(2.6rem,13vw,9rem)] leading-none tracking-tight text-accent-soft will-change-transform"
+    >
+      <span ref={leftRef} className="inline-block will-change-transform">
+        {site.titleLeft}
+      </span>{" "}
+      <span ref={rightRef} className="inline-block will-change-transform">
+        {site.titleRight}
+      </span>
+    </h1>
   );
 }

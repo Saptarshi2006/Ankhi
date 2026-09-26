@@ -36,15 +36,6 @@ export const viewport: Viewport = {
   themeColor: "#fdf3ef",
 };
 
-/**
- * Resolve the motion preference onto <html> before first paint.
- *
- * Must run ahead of paint, otherwise a reader who wants reduced motion sees the
- * full-height scroll tracks for a frame before they collapse. Kept in step with
- * `lib/motion-pref.ts` — same key, same precedence.
- */
-const MOTION_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("ankhi:motion");var r=matchMedia("(prefers-reduced-motion: reduce)").matches;var on=p==="on"?true:p==="off"?false:!r;document.documentElement.dataset.motion=on?"on":"off";}catch(e){document.documentElement.dataset.motion="on";}})();`;
-
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -53,9 +44,6 @@ export default function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${literata.variable} antialiased`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: MOTION_BOOTSTRAP }} />
-      </head>
       <body>
         <SmoothScroll>{children}</SmoothScroll>
       </body>

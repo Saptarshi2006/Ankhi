@@ -7,18 +7,22 @@ const isCoarsePointer = (page: Page) =>
 /**
  * Scroll the way a reader does.
  *
- * Touch devices drive the native scroll directly, since `mouse.wheel` throws
- * there. Lenis reconciles its internal position from the resulting scroll
- * event, so the scrubbed animations still follow.
+ * Stepped on both input models, and that matters: touch devices have no wheel,
+ * so they drive the native scroll directly. But stepping rather than jumping
+ * in one go is the part that counts — a single 6000px programmatic jump is not
+ * something a thumb produces, and Lenis will reconcile against it and undo it.
  */
 async function scrollBy(page: Page, total: number, steps = 14) {
-  if (await isCoarsePointer(page)) {
-    await page.evaluate((dy) => window.scrollBy(0, dy), total);
-  } else {
-    for (let i = 0; i < steps; i += 1) {
-      await page.mouse.wheel(0, total / steps);
-      await page.waitForTimeout(30);
+  const coarse = await isCoarsePointer(page);
+  const delta = total / steps;
+
+  for (let i = 0; i < steps; i += 1) {
+    if (coarse) {
+      await page.evaluate((dy) => window.scrollBy(0, dy), delta);
+    } else {
+      await page.mouse.wheel(0, delta);
     }
+    await page.waitForTimeout(30);
   }
 
   // Lenis eases toward the target rather than landing on it.
@@ -44,6 +48,23 @@ const expectPromptGone = (page: Page) =>
 
 const isLocked = (page: Page) =>
   page.evaluate(() => document.documentElement.classList.contains("scroll-locked"));
+
+/**
+ * Wait until the scroll position stops changing.
+ *
+ * The pop kicks off a 1.2s Lenis glide. Scrolling during it means fighting the
+ * in-flight tween, because `autoKill` only reacts to real wheel and touch input
+ * — not to a programmatic scroll. Real readers never hit this; tests do.
+ */
+async function waitForScrollSettle(page: Page) {
+  let previous = -1;
+  for (let i = 0; i < 40; i += 1) {
+    const current = await page.evaluate(() => Math.round(window.scrollY));
+    if (current === previous) return;
+    previous = current;
+    await page.waitForTimeout(100);
+  }
+}
 
 /** Scroll until the balloon arms, and report where that happened. */
 async function growUntilArmed(page: Page) {
@@ -147,15 +168,20 @@ test.describe("balloon intro", () => {
       expect(Math.abs((await page.evaluate(() => window.scrollY)) - held)).toBeLessThan(4);
     }
 
-    // Phase C — a click anywhere on the stage pops it.
-    const parked = await page.evaluate(() => window.scrollY);
+    /*
+     * Phase C — a click anywhere on the stage pops it. The lock releases and
+     * the page glides itself forward to the title; the exact landing is
+     * asserted in "the title arrives on its own after the pop".
+     */
+    const before = await page.evaluate(() => window.scrollY);
     await page.locator(".sticky-viewport").first().click();
     await expectPromptGone(page);
 
-    // ...the lock releases on its own, without dumping the reader at the top.
     await expect.poll(() => isLocked(page)).toBe(false);
-    await page.waitForTimeout(400);
-    expect(Math.abs((await page.evaluate(() => window.scrollY)) - parked)).toBeLessThan(40);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 8000 })
+      .toBeGreaterThan(before + 100);
+    await waitForScrollSettle(page);
 
     // Phase F — every line of the letter ends up readable. SplitText emits
     // divs, and hides them behind the line's own aria-label.
@@ -170,7 +196,7 @@ test.describe("balloon intro", () => {
     await page.goto("/");
     await growUntilArmed(page);
     await page.locator(".sticky-viewport").first().click();
-    await page.waitForTimeout(1500);
+    await waitForScrollSettle(page);
 
     await scrollToSpread(page);
 
@@ -213,105 +239,78 @@ test.describe("balloon intro", () => {
   });
 });
 
-test.describe("reduced motion", () => {
-  test.use({ reducedMotion: "reduce" });
-
-  test("defaults to the static path and never locks the scroll", async ({ page }) => {
+test.describe("one continuous stage", () => {
+  test("the title arrives on its own after the pop", async ({ page }) => {
     await page.goto("/");
-
-    // The inline bootstrap script resolves this before first paint.
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-
-    await expect(lines(page)).toHaveCount(12);
-
-    await scrollBy(page, 2000);
-    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
-
-    // The prompt is the marker for the locked state; it must never appear.
-    await expectPromptGone(page);
-    expect(await isLocked(page)).toBe(false);
-  });
-
-  test("plays the full choreography when the reader explicitly enables it", async ({ browser }) => {
-    // The system says reduce; the reader says otherwise. The reader wins.
-    const context = await browser.newContext({ reducedMotion: "reduce" });
-    await context.addInitScript(() => {
-      try {
-        localStorage.setItem("ankhi:motion", "on");
-      } catch {
-        /* storage blocked */
-      }
-    });
-    const page = await context.newPage();
-    await page.goto("/");
-
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
-
-    // The balloon grows and arms exactly as it does with no preference at all.
-    const small = (await balloon(page).boundingBox())!.height;
-    await scrollBy(page, 900);
-    expect((await balloon(page).boundingBox())!.height).toBeGreaterThan(small * 2);
-
     await growUntilArmed(page);
     await expectPromptShown(page);
-    expect(await isLocked(page)).toBe(true);
 
-    const framed = await page.evaluate(() => {
-      const rect = document.querySelector('svg[viewBox="0 0 200 320"]')!.getBoundingClientRect();
-      return {
-        top: Math.round(rect.top),
-        bottom: Math.round(rect.bottom),
-        vh: window.innerHeight,
-        stickyTop: Math.round(
-          document.querySelector(".sticky-viewport")!.getBoundingClientRect().top,
-        ),
-      };
-    });
-    expect(framed.stickyTop).toBe(0);
-    expect(framed.top).toBeGreaterThan(-40);
-    expect(framed.bottom).toBeLessThan(framed.vh + 40);
+    const releasedAt = await page.evaluate(() => window.scrollY);
+    await page.locator(".sticky-viewport").first().click();
 
-    await context.close();
+    // The page moves itself. No wheel, no keys.
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 8000 })
+      .toBeGreaterThan(releasedAt + 100);
+
+    // ...and lands with the title fully faded in.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Number(getComputedStyle(document.querySelector("h1")!).opacity),
+          ),
+        { timeout: 8000 },
+      )
+      .toBeGreaterThan(0.95);
   });
 
-  test("the corner toggle overrides the system setting without a reload", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-
-    const toggle = page.locator("[data-motion-toggle]");
-    await expect(toggle).toContainText("Auto");
-
-    // auto -> on
-    await toggle.click();
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
-
-    // and back round to off, then to auto again
-    await toggle.click();
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-    await toggle.click();
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-    await expect(toggle).toContainText("Auto");
-  });
-
-  test("turning motion off while armed releases the lock", async ({ page }) => {
+  test("no frame inside the stage is ever empty, in either direction", async ({ page }) => {
     await page.goto("/");
 
-    // Opt in, then get the balloon to arm.
-    await page.locator("[data-motion-toggle]").click();
-    await growUntilArmed(page);
-    await expectPromptShown(page);
-    expect(await isLocked(page)).toBe(true);
+    const { stageHeight, vh } = await page.evaluate(() => ({
+      stageHeight: Math.round(
+        document.querySelector(".track-stage")!.getBoundingClientRect().height,
+      ),
+      vh: window.innerHeight,
+    }));
 
-    // Opt back out. The tracks collapse and the balloon goes with them, so a
-    // surviving lock would be an unescapable dead page.
-    await page.locator("[data-motion-toggle]").click();
-    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-    await expect.poll(() => isLocked(page)).toBe(false);
-    await expectPromptGone(page);
+    /*
+     * Regression, and the most direct statement of the bug: the balloon and
+     * the title used to be two sticky sections, and the gap between them was
+     * always exactly one viewport — 1280px of nothing after the pop, and a
+     * hole above the title on the way back up.
+     *
+     * Never popped, so the balloon is present for the whole stage. Every scroll
+     * position inside it must show one or the other.
+     */
+    const empties: number[] = [];
+    for (let y = 0; y <= stageHeight; y += 100) {
+      await page.evaluate((top) => window.scrollTo(0, top), y);
+      await page.waitForTimeout(90);
 
-    // The document is live again rather than frozen where the lock left it.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(300);
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      const blank = await page.evaluate(() => {
+        const visible = (selector: string) => {
+          const el = document.querySelector(selector);
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          return (
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight &&
+            Number(getComputedStyle(el).opacity) > 0.05
+          );
+        };
+        return (
+          !visible("h1") && !visible('svg[viewBox="0 0 200 320"]')
+        );
+      });
+
+      if (blank) empties.push(y);
+    }
+
+    // Only the very end, where the frame has finished scrolling away, may be
+    // empty. Anything earlier is a gap.
+    const tolerated = stageHeight - vh * 0.35;
+    expect(empties.filter((y) => y < tolerated)).toEqual([]);
   });
 });

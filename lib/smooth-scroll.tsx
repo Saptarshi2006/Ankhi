@@ -11,22 +11,28 @@ import {
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { useAllowMotion } from "./motion-pref";
 import "lenis/dist/lenis.css";
 
 gsap.registerPlugin(ScrollTrigger);
 
+type ScrollToOptions = {
+  duration?: number;
+  /** Abandon the animation the moment the reader scrolls. */
+  autoKill?: boolean;
+  easing?: (t: number) => number;
+};
+
 /**
- * The slice of Lenis the intro actually needs: freeze and release the scroll
- * for the balloon lock.
+ * The slice of Lenis the intro needs: freeze the scroll for the balloon lock,
+ * release it, and glide to the title after the pop.
  *
  * Deliberately not the Lenis instance itself. Handing out a mutable singleton
- * through state would mean re-rendering every consumer the moment it is
- * created, and `lenis.stop` is the only method anything calls.
+ * through state would re-render every consumer the moment it is created.
  */
 type LenisHandle = {
   stop: () => void;
   start: () => void;
+  scrollTo: (y: number, options?: ScrollToOptions) => void;
 };
 
 const LenisContext = createContext<LenisHandle | null>(null);
@@ -35,7 +41,6 @@ export const useLenis = () => useContext(LenisContext);
 
 export function SmoothScroll({ children }: { children: ReactNode }) {
   const instanceRef = useRef<Lenis | null>(null);
-  const allowMotion = useAllowMotion();
 
   // Created exactly once, so the context value is referentially stable and no
   // consumer re-renders merely because scroll was initialised. The lazy
@@ -44,16 +49,10 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
   const [handle] = useState<LenisHandle>(() => ({
     stop: () => instanceRef.current?.stop(),
     start: () => instanceRef.current?.start(),
+    scrollTo: (y, options) => instanceRef.current?.scrollTo(y, options),
   }));
 
   useEffect(() => {
-    // With motion off there is nothing to smooth: native scrolling is the
-    // accessible default, and nothing here should override it.
-    if (!allowMotion) {
-      ScrollTrigger.refresh();
-      return;
-    }
-
     const instance = new Lenis({ autoRaf: false, lerp: 0.09 });
     instanceRef.current = instance;
 
@@ -82,7 +81,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       instance.destroy();
       instanceRef.current = null;
     };
-  }, [allowMotion]);
+  }, []);
 
   return <LenisContext.Provider value={handle}>{children}</LenisContext.Provider>;
 }

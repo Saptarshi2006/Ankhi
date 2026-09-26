@@ -28,84 +28,88 @@ npm run test:e2e     # builds, then tests out/ in Chromium + iPhone/WebKit
 `test:e2e` runs against the export on purpose: the dev server compiles on demand
 and hides prerender-time problems.
 
-## How section 1 works
+## How the intro works
 
-Six phases, driven by a scroll position rather than by time.
+Everything lives in **one** section with one sticky viewport. Both the balloon
+and the heading share the frame, so it is never empty while pinned.
 
-| Phase | What happens |
+| Range (vh) | Phase |
 | --- | --- |
-| A | Balloon grows from `scale(0.34)` toward the viewer, scrubbing over 1.4 screens |
-| B | At full size the scroll **locks** and a prompt appears |
-| C | Click or any key pops it — canvas burst, synthesised pop, lock released |
-| D | "Happy 19th" arrives at centre |
-| E | The two words travel to opposite edges, hold, then fade as the letter starts |
-| F | Twelve lines reveal one at a time |
+| `0 → 1.25` | Balloon grows from `scale(0.34)` toward the viewer. Scroll locks at the end. |
+| `1.25 → 1.5` | Pop. Canvas burst, synthesised pop, lock released, page glides to the title. |
+| `1.5 → 1.7` | "Happy 19th" fades in at centre. |
+| `1.7 → 2.7` | The two words travel to opposite edges and hold. |
+| `2.7 → 3.2` | They hold while the frame is still pinned. |
+| `3.2 → 4.2` | They fade as the frame scrolls away into the letter. |
 
-State lives in one place, `components/intro/Intro.tsx`, as
-`approach → armed → popping → letter`. Everything else takes props off that.
+Those numbers are constants in `lib/stage-ranges.ts`, in viewport heights so they
+behave the same on a phone and a desktop. The track height in `globals.css`
+(`--track-stage`) must stay equal to `STAGE.trackVh × 100vh`.
 
-Two controls sit in the top corners: sound, and motion (`Auto` / `Motion` /
-`Still`). Both persist to `localStorage`.
+State lives in `components/intro/Intro.tsx` as
+`approach → armed → popping → settled`. Everything else takes props off that.
+
+### Why one section
+
+The balloon and the title used to be two separate sticky sections. That cannot
+work without a gap: the void between two sticky sections is always exactly one
+viewport tall — the height of the first frame un-pinning. It left 1280px of
+nothing to scroll after the pop, and a hole above the title on the way back up.
 
 ### Decisions worth knowing before editing
 
-**`sticky`, not ScrollTrigger's `pin`.** The tracks are tall sections holding a
-`position: sticky` viewport. `pin` injects a spacer element, which reflows when
-webfonts land mid-scrub. `sticky` does not.
+**`sticky`, not ScrollTrigger's `pin`.** `pin` injects a spacer element, which
+reflows when webfonts land mid-scrub. `sticky` does not.
 
-**Growth ends 1.4 screens in, not at `bottom bottom`.** The section is 300vh, so
-the sticky frame stays pinned for 200vh of scrolling. Tying the end to the
-section's own edges completes growth at the exact instant sticky releases — the
-balloon hits full size as the frame flies away, so by the time the scroll locks
-it is off the top of the screen and the reader is looking at blank space. The
-remaining 0.6 screens are the held, poppable shot.
+**Both centred elements are pinned to grid cell `1 / 1`.** With
+`place-items-center` and no explicit rows, each child takes its own implicit row,
+and the heading's height pushes the balloon up out of frame.
 
-**The lock never touches `overflow`.** Setting `overflow: hidden` on the root
-does stop the reader scrolling, but it also changes the document's scrollport,
-which re-resolves every sticky frame — the balloon jumped off screen at the
-exact moment the lock landed. Instead: Lenis refuses the input, `touchmove` is
-swallowed (iOS otherwise finishes a momentum scroll already in flight), and the
-scrollbar is hidden so there is nothing left to drag.
+**`TitleSpread` finds the stage with `closest(".track-stage")`, not a passed-in
+ref.** A child's layout effect runs *before* the ancestor's ref is attached, so
+an injected ref is still null and every trigger silently does nothing.
+
+**`at()` returns an absolute pixel number, not a `"+=n"` offset.** An offset
+string on `start` resolves against the trigger's natural position, and when that
+does not land where you expect the trigger reads as already complete — leaving
+its tween at the end state instead of the start state.
 
 **Never share one ScrollTrigger config object between two triggers.** ScrollTrigger
 mutates the config it is handed; the second trigger overwrites the first's cached
-geometry. `growth()` in `BalloonStage.tsx` is a factory for this reason.
+geometry.
 
 **The spread measures with `offsetLeft`/`offsetWidth`,** never
 `getBoundingClientRect()`. The heading is scaled as it arrives, so any rendered
 measurement changes mid-flight and throws the destination past the viewport edge.
 
-**The balloon is three nested elements.** `scrollRef` takes the scrub,
-`idleRef` takes a permanent idle bob and the armed pulse, `stringRef` takes a
-slower pendulum. Collapsing any two would put two tweens on one property.
+**The lock never touches `overflow`.** Setting `overflow: hidden` on the root also
+changes the document's scrollport, which re-resolves every sticky frame — the
+balloon jumps off screen the moment the lock lands. Instead: Lenis refuses the
+input, `touchmove` is swallowed (iOS otherwise finishes a momentum scroll already
+in flight), and the scrollbar is hidden so there is nothing left to drag.
 
-**The lock is three things.** `lenis.stop()`, a `touchmove` guard, and a hidden
-scrollbar. See the note above on why not `overflow: hidden`.
+**The pop auto-advances with `autoKill: true`.** It glides the reader to the
+title rather than leaving them to find it, and any real scroll cancels it.
 
-**The dimming behind the balloon is a vignette, not a blur.** A full-viewport
-`backdrop-filter` re-composited on every scroll frame is the one effect here
-that would actually cost frames on a phone.
+**Motion is always on.** Reduced-motion support was removed: it needed a
+`data-motion` attribute on `<html>`, which cannot be managed from an inline script
+without a React hydration mismatch, and the reader can override the OS setting
+here anyway. Restoring it means `gsap.matchMedia()` in `IntroStage`,
+`TitleSpread` and `Letter`, plus a media query in `globals.css` — with no
+hydration cost that way.
+
+**The dim behind the balloon is a vignette, not a blur.** A full-viewport
+`backdrop-filter` re-composited on every scroll frame costs real frames on a
+phone.
 
 **Hidden animation states are set from JS, not CSS.** `useGSAP` uses a layout
 effect, so the start state lands before paint. Putting it in CSS instead would
-leave the letter invisible if the JS bundle failed — the letter is the one
-thing on this site that must never be missing.
+leave the letter invisible if the JS bundle failed — the letter is the one thing
+on this site that must never be missing.
 
 **SplitText is scoped to the letter.** The title uses two hand-written spans;
 SplitText exists for the per-line word stagger, and the rewrite emits `<div>`s
 (the line keeps its own `aria-label`, fragments are `aria-hidden`).
-
-**Reduced motion is a three-state preference, not a hard disable.** `auto` (the
-default) follows the OS. The corner toggle cycles `auto → on → off`, so anyone
-who left `prefers-reduced-motion` on globally — it is a system-wide setting, not
-a per-site one — can still get the choreography without editing the OS. The
-resolved value is published as `<html data-motion>` by an inline script in the
-layout, and **re-asserted from a layout effect**, because React reclaims the
-`<html>` element during hydration and drops the attribute it does not know about.
-
-**The hint's reduced-motion rule must not set `opacity`.** That selector outranks
-Tailwind's `opacity-0`, so adding `opacity: 1` to stop the pulse animation pins
-the prompt visible even when the balloon is not armed.
 
 ## Adding the next section
 

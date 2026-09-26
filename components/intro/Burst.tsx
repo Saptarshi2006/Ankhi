@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useAllowMotion } from "@/lib/motion-pref";
 
 type Particle = {
   x: number;
@@ -32,7 +31,6 @@ const COUNT = 90;
  */
 export default function Burst({ runKey }: { runKey: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const allowMotion = useAllowMotion();
 
   useEffect(() => {
     if (runKey === 0) return;
@@ -41,8 +39,6 @@ export default function Burst({ runKey }: { runKey: number }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
-    if (!allowMotion) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cx = window.innerWidth / 2;
@@ -142,7 +138,7 @@ export default function Burst({ runKey }: { runKey: number }) {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
     };
-  }, [runKey, allowMotion]);
+  }, [runKey]);
 
   return (
     <canvas

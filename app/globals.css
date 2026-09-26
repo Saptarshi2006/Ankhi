@@ -21,9 +21,8 @@
   --rose-soft: oklch(0.78 0.105 20);
   --gold: oklch(0.93 0.04 60);
 
-  /* Scroll track lengths. Overridden under reduced-motion below. */
-  --track-balloon: 300vh;
-  --track-title: 220vh;
+  /* Intro stage height. Must equal STAGE.trackVh × 100vh. */
+  --track-stage: 420vh;
 }
 
 @theme inline {
@@ -50,17 +49,26 @@ body {
 }
 
 /*
- * Scroll choreography. Phases A–E scrub against a tall "track" while a
- * `sticky-viewport` holds the frame. `sticky` (not ScrollTrigger's `pin`) is
- * deliberate: it inserts no spacer element, so nothing reflows when webfonts
- * land mid-scrub.
+ * The intro stage.
+ *
+ * One tall section holding one `sticky-viewport`, with the balloon and the
+ * heading sharing the frame. Phases A–E are absolute scroll ranges within it
+ * (see `lib/stage-ranges.ts`).
+ *
+ * This has to be a single section. Between two sticky sections there is always
+ * a gap of exactly one viewport — the height of the first frame un-pinning — so
+ * a balloon stage followed by a title stage left the reader scrolling 1280px of
+ * nothing after the pop, and left a hole above the title on the way back up.
+ *
+ * `sticky` (not ScrollTrigger's `pin`) is deliberate: it inserts no spacer
+ * element, so nothing reflows when webfonts land mid-scrub.
+ *
+ * Keep in step with STAGE.trackVh — the last viewport is the tail the frame
+ * scrolls away over, and the title fades across it so it is never empty while
+ * pinned.
  */
-.track-balloon {
-  height: var(--track-balloon);
-}
-
-.track-title {
-  height: var(--track-title);
+.track-stage {
+  height: var(--track-stage);
 }
 
 .sticky-viewport {
@@ -124,62 +132,4 @@ body {
 
 .pulse-hint {
   animation: hint-pulse 2.1s ease-in-out infinite;
-}
-
-/*
- * Reduced motion.
- *
- * Keyed off `data-motion` rather than the media query directly, because the
- * reader can override the system setting from the corner toggle. The attribute
- * is resolved pre-paint by the inline script in the layout, and mirrors
- * `lib/motion-pref.ts`.
- *
- * The tracks collapse so there is nothing to scrub: the balloon becomes static
- * decoration, the title sits centred, the letter renders straight away. No
- * scroll lock and no click required.
- *
- * The media query block is the no-JS fallback — without the script the
- * attribute is never set.
- */
-html[data-motion="off"] {
-  --track-balloon: 100svh;
-}
-
-html[data-motion="off"] .track-title {
-  height: auto;
-  padding-block: 14vh;
-}
-
-html[data-motion="off"] .track-title .sticky-viewport {
-  position: static;
-  height: auto;
-  overflow: visible;
-}
-
-/* Stop the pulse, but leave `opacity` alone. This selector outranks Tailwind's
-   `opacity-0`, so setting opacity here would pin the hint visible even when
-   the balloon is not armed. */
-html[data-motion="off"] .pulse-hint {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html:not([data-motion]) {
-    --track-balloon: 100svh;
-  }
-
-  html:not([data-motion]) .track-title {
-    height: auto;
-    padding-block: 14vh;
-  }
-
-  html:not([data-motion]) .track-title .sticky-viewport {
-    position: static;
-    height: auto;
-    overflow: visible;
-  }
-
-  html:not([data-motion]) .pulse-hint {
-    animation: none;
-  }
 }

@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
-import { useAllowMotion } from "@/lib/motion-pref";
+import { STAGE, at } from "@/lib/stage-ranges";
 import Balloon from "./Balloon";
+import TitleSpread from "./TitleSpread";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -13,21 +14,24 @@ gsap.registerPlugin(ScrollTrigger);
 const START_SCALE = 0.34;
 /** Big enough to feel close, small enough that its box still fits the frame. */
 const MAX_SCALE = 2.5;
-/** Viewport heights of scrolling the growth is spread across. */
-const GROWTH_VH = 1.4;
 
 /**
- * Phases A–C: the balloon closes in, arms, and pops.
+ * Phases A–E in a single sticky section.
  *
- * Three nested elements, because three different things animate them:
- *   scrollRef  — scrubbed against the scroll track (scale + y)
+ * One section, one sticky viewport, both the balloon and the heading inside it.
+ * The frame is never empty while pinned, so there is no dead zone to scroll
+ * through in either direction.
+ *
+ * Three nested elements around the balloon, because three different things
+ * animate them:
+ *   scrollRef  — scrubbed against the stage (scale + y)
  *   idleRef    — a permanent idle life (bob + sway), and the armed pulse
  *   stringRef  — a slower pendulum on the SVG string, trailing the sway
  *
  * Collapsing any two of these would mean one tween fighting another for the
  * same property.
  */
-export default function BalloonStage({
+export default function IntroStage({
   armed,
   popping,
   onArm,
@@ -45,16 +49,9 @@ export default function BalloonStage({
   const veilRef = useRef<HTMLDivElement>(null);
   const scrubRef = useRef<gsap.core.Tween | null>(null);
   const armGuard = useRef(false);
-  const allowMotion = useAllowMotion();
 
   useGSAP(
     () => {
-      if (!allowMotion) {
-        // Decoration only: no scrub, no lock, nothing to click.
-        gsap.set(scrollRef.current, { scale: 0.62, y: "-6vh" });
-        return;
-      }
-
       // Idle life. Runs on its own so it survives the scrub untouched.
       gsap.to(idleRef.current, {
         y: -10,
@@ -72,21 +69,19 @@ export default function BalloonStage({
 
       // Phase A — approach.
       //
-      // The end is measured in viewport heights rather than pinned to the
-      // section's own edges. Ending at "bottom bottom" completes growth at
-      // the exact instant the sticky frame unpins, so the balloon reaches
-      // full size while the frame is already flying away — by the time the
-      // scroll locks, the balloon is off the top of the screen. Finishing
-      // 1.4 screens in leaves the frame pinned and still for the remaining
-      // 0.6, which is the shot the reader is actually meant to see.
+      // Ends well before the frame unpins, so the balloon reaches full size
+      // while the frame is still held still. Tying the end to the section's
+      // own edges completes growth at the exact instant sticky releases, and
+      // the balloon is off the top of the screen by the time the scroll locks.
       //
       // A factory, not a shared object: ScrollTrigger mutates the config it
       // is given, so handing the same literal to two triggers corrupts the
       // first one's cached geometry.
+      const trigger = sectionRef.current;
       const growth = () => ({
-        trigger: sectionRef.current,
+        trigger,
         start: "top top",
-        end: () => "+=" + window.innerHeight * GROWTH_VH,
+        end: at(trigger, STAGE.growthEnd),
         invalidateOnRefresh: true,
       });
 
@@ -110,21 +105,25 @@ export default function BalloonStage({
         },
       );
 
+      // The room dims as the balloon closes in, so it reads as approaching the
+      // viewer rather than merely growing. A vignette, not a backdrop-filter:
+      // blurring a full-viewport layer on every scroll frame is the one effect
+      // here that would actually cost frames on a phone.
       gsap.fromTo(
         veilRef.current,
         { opacity: 0 },
         { opacity: 0.85, ease: "none", scrollTrigger: { ...growth(), scrub: true } },
       );
 
-      // ...and back out again as the stage leaves. Without this the veil
-      // scrolls off as a hard-edged pink band across the top of the screen.
+      // ...and clears across the pop, so the title lands on a clean
+      // background rather than on top of the dimming.
       gsap.to(veilRef.current, {
         opacity: 0,
         ease: "none",
         scrollTrigger: {
-          trigger: sectionRef.current,
-          start: () => "+=" + window.innerHeight * GROWTH_VH,
-          end: "bottom bottom",
+          trigger,
+          start: at(trigger, STAGE.growthEnd),
+          end: at(trigger, STAGE.titleIn),
           scrub: true,
           invalidateOnRefresh: true,
         },
@@ -135,7 +134,7 @@ export default function BalloonStage({
         scrubRef.current = null;
       };
     },
-    { scope: sectionRef, dependencies: [allowMotion] },
+    { scope: sectionRef },
   );
 
   // Phase B — armed. The pulse rides `idleRef` rather than `scrollRef` so it
@@ -172,7 +171,7 @@ export default function BalloonStage({
   }, [popping]);
 
   return (
-    <section ref={sectionRef} className="track-balloon relative">
+    <section ref={sectionRef} className="track-stage relative">
       <div
         className={`sticky-viewport grid select-none place-items-center ${
           armed ? "cursor-pointer" : ""
@@ -181,7 +180,17 @@ export default function BalloonStage({
       >
         <div ref={veilRef} className="veil absolute inset-0 opacity-0" aria-hidden="true" />
 
-        <div ref={scrollRef} className="relative grid place-items-center will-change-transform">
+        {/*
+          `1 / 1` on both the balloon and the heading is load-bearing. With
+          `place-items-center` and no explicit rows, each child would take its
+          own implicit row, and the heading's height would push the balloon up
+          out of frame. Pinning both to the same cell stacks them centred on
+          top of each other instead.
+        */}
+        <div
+          ref={scrollRef}
+          className="relative col-start-1 row-start-1 grid place-items-center will-change-transform"
+        >
           <div className="glow absolute h-[85%] w-[85%] rounded-full blur-2xl" aria-hidden="true" />
           <div ref={idleRef} className="will-change-transform">
             <Balloon
@@ -191,13 +200,15 @@ export default function BalloonStage({
           </div>
         </div>
 
+        <TitleSpread />
+
         {/*
           Not optional. An unprompted locked scroll is indistinguishable from a
           frozen page — without this line, phases A–B dead-end.
         */}
         <p
           aria-hidden={!armed}
-          className={`pointer-events-none absolute inset-x-0 bottom-[16vh] text-center font-sans text-[0.72rem] uppercase tracking-[0.38em] text-ink-muted transition-opacity duration-700 ${
+          className={`pointer-events-none absolute inset-x-0 bottom-[16vh] z-10 text-center font-sans text-[0.72rem] uppercase tracking-[0.38em] text-ink-muted transition-opacity duration-700 ${
             armed ? "pulse-hint opacity-100" : "opacity-0"
           }`}
         >
