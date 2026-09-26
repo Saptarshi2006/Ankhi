@@ -142,8 +142,9 @@ npm run deploy:dry     # validate config, upload nothing
 npm run deploy         # build, then publish
 ```
 
-This deploys to `ankhi-19.<your-subdomain>.workers.dev`. To attach a domain, add
-to `wrangler.jsonc`:
+Live at <https://ankhi-19.dsjzcjmsh6.workers.dev>.
+
+To attach a domain, add to `wrangler.jsonc`:
 
 ```jsonc
 "routes": [{ "pattern": "yourdomain.com", "custom_domain": true }]
@@ -155,6 +156,18 @@ creates the DNS records and issues the certificate itself.
 `assets.not_found_handling: "404-page"` makes Workers serve `out/404.html` with
 a real 404 status, which `app/not-found.tsx` supplies. `html_handling` is left at
 its default, `auto-trailing-slash`, which already matches `trailingSlash: true`.
+
+### Caching
+
+`public/_headers` ships as `out/_headers` and Workers applies it at deploy time.
+Without it, hashed assets under `/_next/static/` are served as
+`max-age=0, must-revalidate`, so every returning visitor revalidates and
+re-downloads the whole ~1.2MB of JS, CSS and fonts. Those filenames contain a
+content hash, so they get `max-age=31536000, immutable`. HTML keeps the default,
+which is what you want for a document that changes.
+
+A test asserts that file is present, because losing it would not error — it would
+just quietly get slower.
 
 ### npm 12 and install scripts
 

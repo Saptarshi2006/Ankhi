@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 /** Touch devices have no wheel to drive. */
@@ -412,5 +414,30 @@ test.describe("the 404", () => {
     await page.getByRole("link", { name: /Back to the beginning/ }).click();
 
     await expect(lines(page)).toHaveCount(12);
+  });
+});
+
+test.describe("deploy config", () => {
+  test("the export ships _headers so hashed assets cache immutably", () => {
+    /*
+     * Guards a silent production regression. Without out/_headers, Workers
+     * serves everything as `max-age=0, must-revalidate`, so every returning
+     * visitor revalidates and re-downloads the whole ~1.2MB of JS, CSS and
+     * fonts. Nothing errors when that file goes missing — it just quietly
+     * gets slower.
+     */
+    const headers = readFileSync(join(process.cwd(), "out", "_headers"), "utf8");
+
+    expect(headers).toContain("/_next/static/*");
+    expect(headers).toMatch(/Cache-Control:\s*public, max-age=31536000, immutable/);
+  });
+
+  test("wrangler deploys assets only, with no Worker script", () => {
+    const config = readFileSync(join(process.cwd(), "wrangler.jsonc"), "utf8");
+
+    expect(config).toContain('"directory": "./out"');
+    expect(config).toContain('"not_found_handling": "404-page"');
+    // A `main` would pull in a Worker runtime this site does not need.
+    expect(config).not.toMatch(/^\s*"main"/m);
   });
 });
