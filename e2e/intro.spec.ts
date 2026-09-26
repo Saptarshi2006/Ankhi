@@ -50,17 +50,23 @@ const isLocked = (page: Page) =>
   page.evaluate(() => document.documentElement.classList.contains("scroll-locked"));
 
 /**
- * Wait until the scroll position stops changing.
+ * Wait until the scroll position has genuinely stopped changing.
  *
  * The pop kicks off a 1.2s Lenis glide. Scrolling during it means fighting the
  * in-flight tween, because `autoKill` only reacts to real wheel and touch input
  * — not to a programmatic scroll. Real readers never hit this; tests do.
+ *
+ * Requires three consecutive identical samples rather than two: the glide
+ * eases out, so its final pixels move less than one per sample and two equal
+ * readings can land while Lenis is still applying force.
  */
 async function waitForScrollSettle(page: Page) {
   let previous = -1;
-  for (let i = 0; i < 40; i += 1) {
+  let stable = 0;
+  for (let i = 0; i < 60; i += 1) {
     const current = await page.evaluate(() => Math.round(window.scrollY));
-    if (current === previous) return;
+    stable = current === previous ? stable + 1 : 0;
+    if (stable >= 3) return;
     previous = current;
     await page.waitForTimeout(100);
   }
@@ -312,5 +318,77 @@ test.describe("one continuous stage", () => {
     // empty. Anything earlier is a gap.
     const tolerated = stageHeight - vh * 0.35;
     expect(empties.filter((y) => y < tolerated)).toEqual([]);
+  });
+});
+
+test.describe("after the balloon is gone", () => {
+  test("scrolling back to the top still meets the words", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    /*
+     * Regression. The balloon pops once and never returns, by design — which
+     * left the first 1.25 screens of the stage permanently empty. Invisible on
+     * the way down, because the balloon fills it, and a blank ~1.2 screens the
+     * moment the reader scrolled back up.
+     */
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(700);
+
+    const reprise = await page.evaluate(() => {
+      const el = document.querySelector("[data-reprise]");
+      if (!el) return { present: false };
+      const rect = el.getBoundingClientRect();
+      return {
+        present: true,
+        onScreen:
+          rect.bottom > 0 &&
+          rect.top < window.innerHeight &&
+          Number(getComputedStyle(el).opacity) > 0.05,
+        text: el.textContent?.trim(),
+      };
+    });
+
+    expect(reprise.present).toBe(true);
+    expect(reprise.onScreen).toBe(true);
+    expect(reprise.text).toBe("Happy 19th");
+  });
+
+  test("the reprise hands over to the main heading without a gap", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    // Every position across the handover must show at least one of the two.
+    const gaps: number[] = [];
+    for (let y = 0; y <= 1600; y += 100) {
+      await page.evaluate((top) => window.scrollTo(0, top), y);
+      await page.waitForTimeout(90);
+
+      const blank = await page.evaluate(() => {
+        const visible = (selector: string) => {
+          const el = document.querySelector(selector);
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          return (
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight &&
+            Number(getComputedStyle(el).opacity) > 0.05
+          );
+        };
+        return (
+          !visible("[data-reprise]") &&
+          !visible("h1") &&
+          !visible('svg[viewBox="0 0 200 320"]')
+        );
+      });
+
+      if (blank) gaps.push(y);
+    }
+
+    expect(gaps).toEqual([]);
   });
 });

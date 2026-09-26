@@ -135,6 +135,7 @@ export default function Intro() {
       <IntroStage
         armed={phase === "armed"}
         popping={phase === "popping"}
+        popped={phase === "popping" || phase === "settled"}
         onArm={arm}
         onPop={pop}
       />

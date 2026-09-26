@@ -6,6 +6,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { STAGE, at } from "@/lib/stage-ranges";
 import Balloon from "./Balloon";
+import Reprise from "./Reprise";
 import TitleSpread from "./TitleSpread";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -34,11 +35,14 @@ const MAX_SCALE = 2.5;
 export default function IntroStage({
   armed,
   popping,
+  popped,
   onArm,
   onPop,
 }: {
   armed: boolean;
   popping: boolean;
+  /** Sticky once the balloon has burst — it never comes back. */
+  popped: boolean;
   onArm: () => void;
   onPop: () => void;
 }) {
@@ -199,6 +203,13 @@ export default function IntroStage({
             />
           </div>
         </div>
+
+        {/*
+          Only after the burst. The balloon owns this part of the frame until
+          then, and once it is gone for good the words take its place so
+          scrolling back up never lands on an empty screen.
+        */}
+        {popped && <Reprise />}
 
         <TitleSpread />
 

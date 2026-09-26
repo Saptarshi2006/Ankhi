@@ -37,7 +37,7 @@ and the heading share the frame, so it is never empty while pinned.
 | --- | --- |
 | `0 → 1.25` | Balloon grows from `scale(0.34)` toward the viewer. Scroll locks at the end. |
 | `1.25 → 1.5` | Pop. Canvas burst, synthesised pop, lock released, page glides to the title. |
-| `1.5 → 1.7` | "Happy 19th" fades in at centre. |
+| `1.5 → 1.7` | "Happy 19th" fades in at centre, crossfading with the reprise. |
 | `1.7 → 2.7` | The two words travel to opposite edges and hold. |
 | `2.7 → 3.2` | They hold while the frame is still pinned. |
 | `3.2 → 4.2` | They fade as the frame scrolls away into the letter. |
@@ -48,6 +48,15 @@ behave the same on a phone and a desktop. The track height in `globals.css`
 
 State lives in `components/intro/Intro.tsx` as
 `approach → armed → popping → settled`. Everything else takes props off that.
+
+### After the balloon is gone
+
+The balloon pops once and never returns. That leaves the first 1.25 screens of
+the stage empty for the rest of the session — invisible on the way down,
+because the balloon fills it, and a blank ~1.2 screens the moment the reader
+scrolls back up. `Reprise.tsx` fills that with a small, quiet "Happy 19th" in
+the body serif, mounted only once the burst has happened, handing over to the
+real heading across exactly the range that heading arrives over.
 
 ### Why one section
 
