@@ -392,3 +392,25 @@ test.describe("after the balloon is gone", () => {
     expect(gaps).toEqual([]);
   });
 });
+
+test.describe("the 404", () => {
+  test("serves the custom page with a real 404 status", async ({ page }) => {
+    const response = await page.goto("/nothing-here");
+
+    // Not just the copy — the status has to be a genuine 404, which is what
+    // assets.not_found_handling buys on Workers.
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText("This page never existed.")).toBeVisible();
+    await expect(page.getByText("But she does.")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Back to the beginning/ }),
+    ).toBeVisible();
+  });
+
+  test("the link leads back to the letter", async ({ page }) => {
+    await page.goto("/nothing-here");
+    await page.getByRole("link", { name: /Back to the beginning/ }).click();
+
+    await expect(lines(page)).toHaveCount(12);
+  });
+});

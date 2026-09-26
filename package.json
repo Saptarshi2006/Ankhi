@@ -8,7 +8,9 @@
     "serve": "node scripts/serve.mjs out",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -27,9 +29,13 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.141.0"
   },
   "allowScripts": {
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260925.1": true
   }
 }

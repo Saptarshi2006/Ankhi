@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ankhi-19",
+  "compatibility_date": "2026-09-26",
+
+  /*
+   * Assets only — no `main`, because there is no Worker script. `next build`
+   * with `output: "export"` produces a flat `out/`, and Workers Static Assets
+   * serves it with no adapter and no runtime. Requests to static assets are
+   * free and unlimited.
+   *
+   * That is also why Cloudflare's own Next.js guidance does not apply here: it
+   * points at `vinext`, which is for Next's *runtime* on Workers. A static
+   * export has none.
+   */
+  "assets": {
+    "directory": "./out",
+    // Serve out/404.html with a real 404 status, rather than a bare empty one.
+    "not_found_handling": "404-page"
+    // `html_handling` is left at its default, `auto-trailing-slash`, which
+    // already matches `trailingSlash: true` in next.config.ts.
+  }
+
+  // No `routes` yet: this deploys to ankhi-19.<subdomain>.workers.dev.
+  // To attach a domain later, add:
+  //   "routes": [{ "pattern": "yourdomain.com", "custom_domain": true }]
+  // The domain must already be a zone on this same Cloudflare account.
+  // Cloudflare creates the DNS records and issues the certificate itself.
+}

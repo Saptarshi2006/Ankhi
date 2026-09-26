@@ -129,18 +129,37 @@ Content belongs in `content/` as typed data, not in the components.
 
 ## Deploying
 
-Not set up yet. Intentionally — this is a static export, so it needs no adapter:
+Static export, so there is **no adapter**. Cloudflare's Next.js guidance points at
+`vinext`, but that is for Next's *runtime* on Workers — a static export has none.
+`next build` produces a flat `out/`, and Workers Static Assets serves it as-is.
 
-```jsonc
-// wrangler.jsonc
-{
-  "name": "ankhi-19",
-  "compatibility_date": "2026-09-26",
-  "assets": { "directory": "./out" },
-  "routes": [{ "pattern": "yourdomain.com", "custom_domain": true }]
-}
+Config is `wrangler.jsonc`: assets only, no `main`, no bindings. Requests to
+static assets are **free and unlimited**, with no storage cost.
+
+```bash
+npx wrangler login     # one-time, opens a browser
+npm run deploy:dry     # validate config, upload nothing
+npm run deploy         # build, then publish
 ```
 
-`npm run build && npx wrangler deploy`. The domain has to be a zone on the same
-Cloudflare account. Cloudflare's docs point Next.js at `vinext`, but that is for
-Next's *runtime*; a static export does not need it.
+This deploys to `ankhi-19.<your-subdomain>.workers.dev`. To attach a domain, add
+to `wrangler.jsonc`:
+
+```jsonc
+"routes": [{ "pattern": "yourdomain.com", "custom_domain": true }]
+```
+
+The domain must already be a zone on the same Cloudflare account. Cloudflare
+creates the DNS records and issues the certificate itself.
+
+`assets.not_found_handling: "404-page"` makes Workers serve `out/404.html` with
+a real 404 status, which `app/not-found.tsx` supplies. `html_handling` is left at
+its default, `auto-trailing-slash`, which already matches `trailingSlash: true`.
+
+### npm 12 and install scripts
+
+`package.json` has an `allowScripts` field. npm 12 blocks install scripts by
+default; `unrs-resolver` (ESLint's native resolver), `esbuild`, `fsevents` and
+`workerd` (Cloudflare's own runtime) are approved by exact version. Approve
+additions with `npm install-scripts approve <pkg>` rather than relaxing it.
+
