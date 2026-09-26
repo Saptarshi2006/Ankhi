@@ -8,6 +8,7 @@ import { playPop } from "@/lib/sound";
 import { TITLE_SETTLED_VH } from "@/lib/stage-ranges";
 import Signature from "@/components/Signature";
 import SoundToggle from "@/components/SoundToggle";
+import Timeline from "@/components/timeline/Timeline";
 import Burst from "./Burst";
 import IntroStage from "./IntroStage";
 import Letter from "./Letter";
@@ -139,6 +140,13 @@ export default function Intro() {
         onArm={arm}
         onPop={pop}
       />
+      {/*
+        The years sit between the title and the letter on purpose. The letter
+        is the emotional peak; putting a lifetime of backstory after it would
+        undercut it, and ending on "I don't just love having you in my life"
+        with nothing following is the strongest possible close.
+      */}
+      <Timeline />
       <Letter />
     </>
   );

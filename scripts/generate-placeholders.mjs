@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { beats } from "../content/years.ts";
-import { hexFromOklch, duotoneRamp } from "./lib/oklch.mjs";
+import { hexFromOklch, duotoneRamp } from "../lib/colour.ts";
 
 const run = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");

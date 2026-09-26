@@ -441,3 +441,141 @@ test.describe("deploy config", () => {
     expect(config).not.toMatch(/^\s*"main"/m);
   });
 });
+
+test.describe("the timeline", () => {
+  /** Pop the balloon and settle, so the reader is past the intro lock. */
+  async function reachTimeline(page: Page) {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+  }
+
+  /** Scroll on until the timeline is pinned. */
+  async function enterTimeline(page: Page) {
+    await reachTimeline(page);
+    for (let i = 0; i < 30; i += 1) {
+      const inside = await page.evaluate(() => {
+        const el = document.querySelector("[data-timeline]");
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.top <= 1 && rect.bottom >= innerHeight - 1;
+      });
+      if (inside) return;
+      await scrollBy(page, 400, 4);
+    }
+  }
+
+  test("renders one panel per beat, in order, before the letter", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page.locator("[data-timeline]")).toHaveCount(1);
+    await expect(page.locator("[data-beat]")).toHaveCount(6);
+    // Ordered, and the first panel is the first age.
+    await expect(page.locator("[data-beat]").first()).toHaveAttribute("data-beat", "0");
+    await expect(page.locator("[data-beat]").last()).toHaveAttribute("data-beat", "5");
+
+    // The letter is the arrival, so it must come last in the document.
+    const letterFollowsTimeline = await page.evaluate(() => {
+      const timeline = document.querySelector("[data-timeline]")!;
+      const letter = document.querySelector("[data-line]")!;
+      return (
+        (timeline.compareDocumentPosition(letter) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      );
+    });
+    expect(letterFollowsTimeline).toBe(true);
+  });
+
+  test("travels horizontally as the reader scrolls down", async ({ page }) => {
+    await enterTimeline(page);
+
+    const left = () =>
+      page.evaluate(() =>
+        Math.round(document.querySelector(".track-scroll")!.getBoundingClientRect().left),
+      );
+
+    const start = await left();
+    await scrollBy(page, 2500, 20);
+    const later = await left();
+
+    // Vertical scroll is translated into leftward travel.
+    expect(later).toBeLessThan(start - 200);
+  });
+
+  test("the figure grows as the reader scrolls", async ({ page }) => {
+    await enterTimeline(page);
+
+    // A number, not toFixed() — that returns a string, and comparing strings
+    // with toBeGreaterThan is nonsense.
+    const headHeight = () =>
+      page.evaluate(() =>
+        Number(
+          document.querySelector(".timeline-figure ellipse")!.getAttribute("ry"),
+        ),
+      );
+
+    const young = await headHeight();
+    await scrollBy(page, 3500, 28);
+    const older = await headHeight();
+
+    // head-to-height shrinks in proportion as the figure lengthens, but the
+    // absolute head grows with the body.
+    expect(older).toBeGreaterThan(young);
+  });
+
+  test("the colour travels from the first beat to the last", async ({ page }) => {
+    await enterTimeline(page);
+    const start = await page.evaluate(() =>
+      getComputedStyle(document.querySelector("[data-liquid-base]")!).backgroundColor,
+    );
+
+    await scrollBy(page, 5000, 40);
+    const end = await page.evaluate(() =>
+      getComputedStyle(document.querySelector("[data-liquid-base]")!).backgroundColor,
+    );
+
+    expect(start).not.toBe(end);
+    // The last beat is the site's rose, so the timeline hands off to the
+    // letter on exactly the same colour.
+    expect(end).toBe("rgb(253, 242, 240)");
+  });
+
+  test("only the final beat stays in full colour", async ({ page }) => {
+    await page.goto("/");
+
+    const duotoned = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-beat]")].map((beat) => {
+        const media = beat.querySelector("video, img");
+        return media ? getComputedStyle(media).filter : null;
+      }),
+    );
+
+    // Five tinted, one not — the present, marked by being the only untouched
+    // one in a set of duotones.
+    expect(duotoned.filter(Boolean)).toHaveLength(6);
+    expect(duotoned.filter((f) => f === "none")).toHaveLength(1);
+  });
+});
+
+test.describe("palette", () => {
+  test("every beat keeps the ink readable, at AAA", async () => {
+    /*
+     * The six backgrounds are all light, which is why one ink colour serves the
+     * whole timeline. That is an assumption, and this is what stops it quietly
+     * becoming false: a future tweak to a beat's lightness could drop the text
+     * below contrast without anything visibly breaking.
+     */
+    const { beats } = await import("../content/years");
+    const { hexFromOklch, contrastRatio } = await import("../lib/colour");
+
+    const ink = hexFromOklch("oklch(0.28 0.045 340)");
+
+    for (const beat of beats) {
+      const ratio = contrastRatio(ink, hexFromOklch(beat.colour));
+      expect(
+        ratio,
+        `age ${beat.ageFrom}-${beat.ageTo} on ${hexFromOklch(beat.colour)}`,
+      ).toBeGreaterThanOrEqual(7);
+    }
+  });
+});

@@ -108,8 +108,17 @@ export function figureGeometry(shape: FigureShape) {
 
   const shoulderHalfW = (H * shape.shoulder) / 2;
   const armLen = H * shape.armLength;
-  const armX = shoulderHalfW * 0.92;
-  const legX = shoulderHalfW * 0.42;
+  const legLen = H * shape.legRatio;
+
+  /*
+   * Arms and legs hang close to the body. Splaying them wide turns the figure
+   * into an X — a stance that reads as a symbol rather than a person, and
+   * especially wrong for a young child, who stands narrow.
+   */
+  const armX = shoulderHalfW * 0.62;
+  const legX = shoulderHalfW * 0.34;
+  const handFlare = armX * 0.16;
+  const footFlare = legX * 0.42;
 
   return {
     H,
@@ -125,7 +134,10 @@ export function figureGeometry(shape: FigureShape) {
     armX,
     armLen,
     handY: shoulderY + armLen,
+    handFlare,
     legX,
+    legLen,
+    footFlare,
     feetY: floor,
   };
 }

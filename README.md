@@ -30,8 +30,8 @@ and hides prerender-time problems.
 
 ## How the intro works
 
-Everything lives in **one** section with one sticky viewport. Both the balloon
-and the heading share the frame, so it is never empty while pinned.
+Everything in the intro lives in **one** section with one sticky viewport. Both
+the balloon and the heading share the frame, so it is never empty while pinned.
 
 | Range (vh) | Phase |
 | --- | --- |
@@ -48,6 +48,56 @@ behave the same on a phone and a desktop. The track height in `globals.css`
 
 State lives in `components/intro/Intro.tsx` as
 `approach → armed → popping → settled`. Everything else takes props off that.
+
+## The timeline
+
+Sits between the title and the letter. The letter is the emotional peak, so the
+timeline goes *before* it — that way the letter is the arrival and the ending
+rather than the midpoint.
+
+Six beats, declared in `content/years.ts`. **The copy is placeholder**; the
+colour journey and the media contract are real.
+
+- **Horizontal.** Vertical scroll is translated into horizontal travel inside a
+  pinned frame. The gesture stays vertical, which is what makes this work on a
+  phone — natively sideways-scrolling would fight the page in portrait.
+- **A figure that grows.** Head-to-height runs from about a quarter at birth to
+  about a seventh at nineteen, with the neck appearing around five. Continuous
+  under scrub, not six states. It stands in its own column on desktop; in
+  portrait it moves behind the panels and keeps growing.
+- **A colour journey.** Hue travels cool to warm and lands on the same rose the
+  intro and the letter use, so the page's colour arc resolves where the love
+  letter arrives. All six backgrounds are light, which is why one ink colour
+  serves the whole timeline — asserted at AAA in the tests.
+- **A liquid drip** between beats, with beads running ahead of the front. It is
+  procedural rather than a MorphSVG tween: a pure function of progress is
+  cheaper per frame than point-matching, gives direct control over where the
+  beads sit, and cannot drift out of register with the scroll.
+- **Duotone per beat**, each ramp derived from that beat's own colour, so
+  background, photographs and video all shift together. One beat — the present —
+  stays in full colour, which is what marks the move from her past to now.
+
+### Timeline media
+
+Nothing is committed. Real photos and clips are far too large, and the
+processed output is rebuilt from them.
+
+```
+content/media/  →  optimise/encode  →  public/photos/ + public/videos/
+  (gitignored)      (build step)          (what ships)
+```
+
+Drop files in by the convention in `content/years.ts` — `y3-b.jpg`, `y5-v.mp4`
+— and `npm run build` picks them up. All three scripts skip any output older
+than its source, so iterating on the site does not re-pay several minutes of
+x264 every time.
+
+`npm run media:placeholders` fabricates a full set so the pipeline is exercised
+before real assets exist. The placeholder clip sizes are **not** a payload
+forecast — a smooth gradient is trivially compressible and real home footage is
+not. Plan against roughly 3.6MB on mobile and 9MB on desktop for real
+eight-second clips, and treat `startSec` / `endSec` as editorial: trimming is
+the lever on all of it.
 
 ### After the balloon is gone
 

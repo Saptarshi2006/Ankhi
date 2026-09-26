@@ -49,22 +49,22 @@ export default function Figure({ className }: { className?: string }) {
     torsoRef.current?.setAttribute("y1", String(g.shoulderY));
     torsoRef.current?.setAttribute("y2", String(g.hipY));
 
-    const elbowY = g.shoulderY + g.armLen * 0.55;
+    const elbowY = g.shoulderY + g.armLen * 0.52;
     armLeftRef.current?.setAttribute(
       "points",
-      `${-g.armX},${g.shoulderY + 4} ${-g.armX - 2},${elbowY} ${-g.armX + 4},${g.handY}`,
+      `${-g.armX},${g.shoulderY + 3} ${-g.armX - 1},${elbowY} ${-g.armX + g.handFlare},${g.handY}`,
     );
     armRightRef.current?.setAttribute(
       "points",
-      `${g.armX},${g.shoulderY + 4} ${g.armX + 2},${elbowY} ${g.armX - 4},${g.handY}`,
+      `${g.armX},${g.shoulderY + 3} ${g.armX + 1},${elbowY} ${g.armX - g.handFlare},${g.handY}`,
     );
     legLeftRef.current?.setAttribute(
       "points",
-      `${-g.legX},${g.hipY} ${-g.legX - 3},${g.feetY - 14} ${-g.legX - 7},${g.feetY}`,
+      `${-g.legX},${g.hipY} ${-g.legX - 1},${g.feetY - 12} ${-g.legX - g.footFlare},${g.feetY}`,
     );
     legRightRef.current?.setAttribute(
       "points",
-      `${g.legX},${g.hipY} ${g.legX + 3},${g.feetY - 14} ${g.legX + 7},${g.feetY}`,
+      `${g.legX},${g.hipY} ${g.legX + 1},${g.feetY - 12} ${g.legX + g.footFlare},${g.feetY}`,
     );
   };
 

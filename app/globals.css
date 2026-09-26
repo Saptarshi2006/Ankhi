@@ -79,6 +79,98 @@ body {
 }
 
 /*
+ * The timeline.
+ *
+ * Pinned with ScrollTrigger's `pin` rather than `sticky`, which is the one
+ * deliberate exception to the rule the intro follows. A horizontal scroller is
+ * exactly one viewport tall and has to stay put for the whole run; `sticky`
+ * would demand a section as tall as its entire horizontal content, which
+ * would be several thousand pixels of nothing to scroll through.
+ */
+.track-timeline {
+  height: 100svh;
+}
+
+.timeline-viewport {
+  position: relative;
+  height: 100%;
+  overflow: clip;
+}
+
+/* The track moves; the figure and rail are laid out in viewport coordinates. */
+.track-scroll {
+  position: relative;
+  height: 100%;
+}
+
+/*
+ * A static spacer holding the figure's column, and the only thing that keeps
+ * panels clear of the figure. Zero width until there is room for a column.
+ */
+.timeline-gutter {
+  width: 0;
+}
+
+/*
+ * The track is wider than the viewport, so panels necessarily travel through
+ * the figure's column. Without this they are hard-clipped behind it, which
+ * reads as broken — you catch a title sliced in half mid-word.
+ *
+ * Fading the track's left edge instead makes panels dissolve as they leave,
+ * so the figure is never occluded and nothing looks cut off. The gradient
+ * reaches full opacity exactly at the column's edge, so a panel sitting at the
+ * start of the timeline is fully visible and loses nothing.
+ */
+.timeline-track-wrap {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26vw);
+  mask-image: linear-gradient(to right, transparent 0, #000 26vw);
+}
+
+.timeline-figure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* In portrait there is no room for a column, so the figure stays behind the
+     panels at low opacity and simply keeps growing behind them. */
+  pointer-events: none;
+  color: oklch(0.28 0.045 340 / 0.12);
+}
+
+.timeline-figure-svg {
+  height: 46vh;
+  width: 46vw;
+}
+
+/*
+ * From lg up the figure gets its own column and the track indents past it, so
+ * the two never overlap. In portrait the track takes the full width and the
+ * figure simply sits behind it.
+ */
+@media (min-width: 1024px) {
+  /*
+   * The figure's column on desktop. No background and no z-index needed: the
+   * track is masked across exactly this width, so panels never reach it and
+   * the beat's own background shows through.
+   */
+  .timeline-figure {
+    inset: 0 74% 0 0;
+    color: oklch(0.28 0.045 340 / 0.45);
+  }
+
+  .timeline-figure-svg {
+    height: 62vh;
+    width: 100%;
+    max-width: 220px;
+  }
+
+  .timeline-gutter {
+    width: 26vw;
+  }
+}
+
+/*
  * Scroll lock for the balloon.
  *
  * Deliberately does NOT set `overflow: hidden` on the root. That does stop the
