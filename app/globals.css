@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/*
+ * Quantum Rose — a purpose-built 6-token palette.
+ *
+ * A shadcn theme is ~25 tokens for cards, inputs and sidebars. This site has
+ * almost none of those components, so we keep only the tokens that actually
+ * paint something. Written in OKLCH so lightness is perceptually uniform and
+ * the rose ramp stays evenly stepped.
+ *
+ * Note: these are deliberately NOT named `--color-rose*`, which would collide
+ * with Tailwind's built-in rose palette and shadow these values.
+ */
+:root {
+  --bg: oklch(0.97 0.012 30);
+  --surface: oklch(0.99 0.006 30);
+  --ink: oklch(0.28 0.045 340);
+  --ink-muted: oklch(0.52 0.035 345);
+  --rose: oklch(0.68 0.135 15);
+  --rose-deep: oklch(0.55 0.15 10);
+  --rose-soft: oklch(0.78 0.105 20);
+  --gold: oklch(0.93 0.04 60);
+
+  /* Scroll track lengths. Overridden under reduced-motion below. */
+  --track-balloon: 160vh;
+  --track-title: 220vh;
+}
+
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-accent: var(--rose);
+  --color-accent-deep: var(--rose-deep);
+  --color-accent-soft: var(--rose-soft);
+  --color-sheen: var(--gold);
+
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-literata);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-literata), Georgia, "Times New Roman", serif;
+  /* `clip` rather than `hidden`: prevents horizontal scroll without creating a
+     scroll container, which would break `position: sticky` further down. */
+  overflow-x: clip;
+}
+
+/*
+ * Scroll choreography. Phases A–E scrub against a tall "track" while a
+ * `sticky-viewport` holds the frame. `sticky` (not ScrollTrigger's `pin`) is
+ * deliberate: it inserts no spacer element, so nothing reflows when webfonts
+ * land mid-scrub.
+ */
+.track-balloon {
+  height: var(--track-balloon);
+}
+
+.track-title {
+  height: var(--track-title);
+}
+
+.sticky-viewport {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: clip;
+}
+
+/*
+ * The room dims as the balloon closes in, so it reads as approaching the
+ * viewer rather than merely growing. A vignette, not a backdrop-filter —
+ * blurring a full-viewport layer on every scroll frame is the one effect here
+ * that would actually cost frames on a phone.
+ */
+.veil {
+  background: radial-gradient(
+    circle at 50% 45%,
+    oklch(0.35 0.09 15 / 0) 18%,
+    oklch(0.35 0.09 15 / 0.55) 100%
+  );
+}
+
+.glow {
+  background: radial-gradient(
+    circle,
+    oklch(0.78 0.105 20 / 0.45),
+    oklch(0.78 0.105 20 / 0) 68%
+  );
+}
+
+@keyframes hint-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pulse-hint {
+  animation: hint-pulse 2.1s ease-in-out infinite;
+}
+
+/*
+ * Reduced motion: collapse the scroll tracks so there is nothing to scrub,
+ * and unpin. The balloon becomes a static decoration, the title sits centred,
+ * and the letter renders immediately. No scroll lock, no click required.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --track-balloon: 100svh;
+  }
+
+  .track-title {
+    height: auto;
+    padding-block: 14vh;
+  }
+
+  .track-title .sticky-viewport {
+    position: static;
+    height: auto;
+    overflow: visible;
+  }
+
+  .pulse-hint {
+    animation: none;
+    opacity: 1;
+  }
+}
