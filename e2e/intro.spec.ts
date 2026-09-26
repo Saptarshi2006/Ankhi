@@ -42,8 +42,32 @@ const expectPromptShown = (page: Page) =>
 const expectPromptGone = (page: Page) =>
   expect.poll(() => promptOpacity(page)).toBeLessThan(0.5);
 
-const rootOverflow = (page: Page) =>
-  page.evaluate(() => document.documentElement.style.overflow);
+const isLocked = (page: Page) =>
+  page.evaluate(() => document.documentElement.classList.contains("scroll-locked"));
+
+/** Scroll until the balloon arms, and report where that happened. */
+async function growUntilArmed(page: Page) {
+  for (let i = 0; i < 14; i += 1) {
+    if (await isLocked(page)) return;
+    await scrollBy(page, 300, 4);
+  }
+}
+
+/** Scroll on to the moment the two words are fully spread. */
+async function scrollToSpread(page: Page) {
+  for (let i = 0; i < 30; i += 1) {
+    await scrollBy(page, 300, 4);
+    const spread = await page.evaluate(() => {
+      const title = document.querySelector("h1");
+      if (!title || Number(getComputedStyle(title).opacity) < 0.99) return false;
+      const words = [...title.querySelectorAll("span")];
+      if (words.length < 2) return false;
+      const [a, b] = words.map((w) => w.getBoundingClientRect());
+      return b.left - a.left > window.innerWidth * 0.6;
+    });
+    if (spread) return;
+  }
+}
 
 test.describe("the letter is real content", () => {
   test("survives JavaScript being disabled", async ({ browser }) => {
@@ -69,16 +93,42 @@ test.describe("balloon intro", () => {
 
     // Phase A — the balloon starts small...
     const small = (await shape.boundingBox())!.height;
-    expect(small).toBeLessThan(80);
+    expect(small).toBeLessThan(200);
 
     // ...and grows as the reader scrolls.
     await scrollBy(page, 900);
     const grown = (await shape.boundingBox())!.height;
     expect(grown).toBeGreaterThan(small * 2);
 
-    // Phase B — armed: the prompt is up and the scroll is held.
+    // Phase B — armed: the prompt is up and the lock is on.
+    await growUntilArmed(page);
     await expectPromptShown(page);
-    await expect.poll(() => rootOverflow(page)).toBe("hidden");
+    expect(await isLocked(page)).toBe(true);
+
+    /*
+     * Regression: the balloon must be on screen, held still, when the lock
+     * lands. Ending growth at "bottom bottom" used to complete it at the exact
+     * instant the sticky frame unpinned, so the balloon shot off the top of the
+     * screen and the reader was left looking at blank space with a dead page.
+     */
+    const framed = await page.evaluate(() => {
+      const rect = document.querySelector('svg[viewBox="0 0 200 320"]')!.getBoundingClientRect();
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        height: Math.round(rect.height),
+        vh: window.innerHeight,
+        // The sticky frame must still be pinned, not sliding away.
+        stickyTop: Math.round(
+          document.querySelector(".sticky-viewport")!.getBoundingClientRect().top,
+        ),
+      };
+    });
+    expect(framed.stickyTop).toBe(0);
+    expect(framed.top).toBeGreaterThan(-40);
+    expect(framed.bottom).toBeLessThan(framed.vh + 40);
+    // ...and genuinely large, or there is nothing to pop.
+    expect(framed.height).toBeGreaterThan(framed.vh * 0.5);
 
     // Touch input is swallowed outright for the duration of the lock.
     const touchBlocked = await page.evaluate(() => {
@@ -89,21 +139,23 @@ test.describe("balloon intro", () => {
     expect(touchBlocked).toBe(true);
 
     if (!coarse) {
-      // A real wheel gesture cannot move the page either. (On touch there is
-      // no wheel, and the programmatic scroll above deliberately bypasses the
-      // lock — which is precisely the gap the touchmove guard covers.)
+      // A real wheel gesture cannot move the page either — and note the lock
+      // no longer sets `overflow: hidden`, so this is Lenis refusing input,
+      // the touchmove guard, and a hidden scrollbar doing the work.
       const held = await page.evaluate(() => window.scrollY);
-      await scrollBy(page, 1200);
-      const stillHeld = await page.evaluate(() => window.scrollY);
-      expect(Math.abs(stillHeld - held)).toBeLessThan(4);
+      await scrollBy(page, 2000, 8);
+      expect(Math.abs((await page.evaluate(() => window.scrollY)) - held)).toBeLessThan(4);
     }
 
     // Phase C — a click anywhere on the stage pops it.
+    const parked = await page.evaluate(() => window.scrollY);
     await page.locator(".sticky-viewport").first().click();
     await expectPromptGone(page);
 
-    // ...and the lock releases on its own.
-    await expect.poll(() => rootOverflow(page)).toBe("");
+    // ...the lock releases on its own, without dumping the reader at the top.
+    await expect.poll(() => isLocked(page)).toBe(false);
+    await page.waitForTimeout(400);
+    expect(Math.abs((await page.evaluate(() => window.scrollY)) - parked)).toBeLessThan(40);
 
     // Phase F — every line of the letter ends up readable. SplitText emits
     // divs, and hides them behind the line's own aria-label.
@@ -114,9 +166,34 @@ test.describe("balloon intro", () => {
     });
   });
 
+  test("the spread words land inside the viewport, not past its edges", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await page.waitForTimeout(1500);
+
+    await scrollToSpread(page);
+
+    /*
+     * Regression: the travel distance used to be derived from a width measured
+     * while the heading was mid-scale, which threw both words off-screen.
+     */
+    const words = await page.evaluate(() => {
+      const spans = [...document.querySelectorAll("h1 span")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: Math.round(r.left), right: Math.round(r.right) };
+      });
+      return { spans, vw: window.innerWidth };
+    });
+
+    expect(words.spans).toHaveLength(2);
+    expect(words.spans[0].left).toBeGreaterThanOrEqual(0);
+    expect(words.spans[1].right).toBeLessThanOrEqual(words.vw);
+  });
+
   test("pops on a keypress", async ({ page }) => {
     await page.goto("/");
-    await scrollBy(page, 1400);
+    await growUntilArmed(page);
     await expectPromptShown(page);
 
     await page.keyboard.press("Enter");
@@ -125,7 +202,7 @@ test.describe("balloon intro", () => {
 
   test("the mute toggle does not pop the balloon", async ({ page }) => {
     await page.goto("/");
-    await scrollBy(page, 1400);
+    await growUntilArmed(page);
     await expectPromptShown(page);
 
     // The stage treats any click as "pop"; the toggle has to opt out.
@@ -149,6 +226,6 @@ test.describe("reduced motion", () => {
 
     // The prompt is the marker for the locked state; it must never appear.
     await expectPromptGone(page);
-    expect(await rootOverflow(page)).toBe("");
+    expect(await isLocked(page)).toBe(false);
   });
 });

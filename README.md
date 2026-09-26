@@ -50,13 +50,34 @@ State lives in one place, `components/intro/Intro.tsx`, as
 `position: sticky` viewport. `pin` injects a spacer element, which reflows when
 webfonts land mid-scrub. `sticky` does not.
 
+**Growth ends 1.4 screens in, not at `bottom bottom`.** The section is 300vh, so
+the sticky frame stays pinned for 200vh of scrolling. Tying the end to the
+section's own edges completes growth at the exact instant sticky releases — the
+balloon hits full size as the frame flies away, so by the time the scroll locks
+it is off the top of the screen and the reader is looking at blank space. The
+remaining 0.6 screens are the held, poppable shot.
+
+**The lock never touches `overflow`.** Setting `overflow: hidden` on the root
+does stop the reader scrolling, but it also changes the document's scrollport,
+which re-resolves every sticky frame — the balloon jumped off screen at the
+exact moment the lock landed. Instead: Lenis refuses the input, `touchmove` is
+swallowed (iOS otherwise finishes a momentum scroll already in flight), and the
+scrollbar is hidden so there is nothing left to drag.
+
+**Never share one ScrollTrigger config object between two triggers.** ScrollTrigger
+mutates the config it is handed; the second trigger overwrites the first's cached
+geometry. `growth()` in `BalloonStage.tsx` is a factory for this reason.
+
+**The spread measures with `offsetLeft`/`offsetWidth`,** never
+`getBoundingClientRect()`. The heading is scaled as it arrives, so any rendered
+measurement changes mid-flight and throws the destination past the viewport edge.
+
 **The balloon is three nested elements.** `scrollRef` takes the scrub,
 `idleRef` takes a permanent idle bob and the armed pulse, `stringRef` takes a
 slower pendulum. Collapsing any two would put two tweens on one property.
 
-**The lock is three things.** `overflow: hidden` on the root, `lenis.stop()`,
-and a `touchmove` guard. `overflow: hidden` alone does not stop iOS finishing an
-in-flight momentum scroll.
+**The lock is three things.** `lenis.stop()`, a `touchmove` guard, and a hidden
+scrollbar. See the note above on why not `overflow: hidden`.
 
 **The dimming behind the balloon is a vignette, not a blur.** A full-viewport
 `backdrop-filter` re-composited on every scroll frame is the one effect here

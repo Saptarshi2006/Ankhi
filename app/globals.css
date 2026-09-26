@@ -22,7 +22,7 @@
   --gold: oklch(0.93 0.04 60);
 
   /* Scroll track lengths. Overridden under reduced-motion below. */
-  --track-balloon: 160vh;
+  --track-balloon: 300vh;
   --track-title: 220vh;
 }
 
@@ -71,6 +71,26 @@ body {
 }
 
 /*
+ * Scroll lock for the balloon.
+ *
+ * Deliberately does NOT set `overflow: hidden` on the root. That does stop the
+ * reader scrolling, but it also changes the document's scrollport, which
+ * re-resolves every `position: sticky` frame — the balloon visibly leaps off
+ * the top of the screen at the exact moment the lock engages.
+ *
+ * Instead: Lenis refuses the input, `touchmove` is swallowed, and the
+ * scrollbar is hidden so there is nothing left to drag.
+ */
+.scroll-locked {
+  scrollbar-width: none;
+  overscroll-behavior: none;
+}
+
+.scroll-locked::-webkit-scrollbar {
+  display: none;
+}
+
+/*
  * The room dims as the balloon closes in, so it reads as approaching the
  * viewer rather than merely growing. A vignette, not a backdrop-filter —
  * blurring a full-viewport layer on every scroll frame is the one effect here
@@ -87,8 +107,8 @@ body {
 .glow {
   background: radial-gradient(
     circle,
-    oklch(0.78 0.105 20 / 0.45),
-    oklch(0.78 0.105 20 / 0) 68%
+    oklch(0.78 0.105 20 / 0.32),
+    oklch(0.78 0.105 20 / 0) 70%
   );
 }
 

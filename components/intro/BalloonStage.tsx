@@ -8,7 +8,12 @@ import Balloon from "./Balloon";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const MAX_SCALE = 1.9;
+/** Distant enough to read as far away, large enough to actually be seen. */
+const START_SCALE = 0.34;
+/** Big enough to feel close, small enough that its box still fits the frame. */
+const MAX_SCALE = 2.5;
+/** Viewport heights of scrolling the growth is spread across. */
+const GROWTH_VH = 1.4;
 
 /**
  * Phases A–C: the balloon closes in, arms, and pops.
@@ -61,19 +66,36 @@ export default function BalloonStage({
           .to(stringRef.current, { rotation: -7, svgOrigin: "100 212" });
 
         // Phase A — approach.
+        //
+        // The end is measured in viewport heights rather than pinned to the
+        // section's own edges. Ending at "bottom bottom" completes growth at
+        // the exact instant the sticky frame unpins, so the balloon reaches
+        // full size while the frame is already flying away — by the time the
+        // scroll locks, the balloon is off the top of the screen. Finishing
+        // 1.4 screens in leaves the frame pinned and still for the remaining
+        // 0.6, which is the shot the reader is actually meant to see.
+        //
+        // A factory, not a shared object: ScrollTrigger mutates the config it
+        // is given, so handing the same literal to two triggers corrupts the
+        // first one's cached geometry.
+        const growth = () => ({
+          trigger: sectionRef.current,
+          start: "top top",
+          end: () => "+=" + window.innerHeight * GROWTH_VH,
+          invalidateOnRefresh: true,
+        });
+
         scrubRef.current = gsap.fromTo(
           scrollRef.current,
-          { scale: 0.12, y: "-34vh" },
+          { scale: START_SCALE, y: "-30vh" },
           {
             scale: MAX_SCALE,
             y: "0vh",
             ease: "none",
             scrollTrigger: {
-              trigger: sectionRef.current,
-              start: "top top",
-              end: "bottom bottom",
+              ...growth(),
               scrub: 0.4,
-              onUpdate: (self) => {
+              onUpdate: (self: { progress: number }) => {
                 if (self.progress >= 0.999 && !armGuard.current) {
                   armGuard.current = true;
                   onArm();
@@ -86,17 +108,22 @@ export default function BalloonStage({
         gsap.fromTo(
           veilRef.current,
           { opacity: 0 },
-          {
-            opacity: 1,
-            ease: "none",
-            scrollTrigger: {
-              trigger: sectionRef.current,
-              start: "top top",
-              end: "bottom bottom",
-              scrub: true,
-            },
-          },
+          { opacity: 0.85, ease: "none", scrollTrigger: { ...growth(), scrub: true } },
         );
+
+        // ...and back out again as the stage leaves. Without this the veil
+        // scrolls off as a hard-edged pink band across the top of the screen.
+        gsap.to(veilRef.current, {
+          opacity: 0,
+          ease: "none",
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: () => "+=" + window.innerHeight * GROWTH_VH,
+            end: "bottom bottom",
+            scrub: true,
+            invalidateOnRefresh: true,
+          },
+        });
 
         return () => {
           scrubRef.current?.scrollTrigger?.kill();
@@ -156,11 +183,11 @@ export default function BalloonStage({
         <div ref={veilRef} className="veil absolute inset-0 opacity-0" aria-hidden="true" />
 
         <div ref={scrollRef} className="relative grid place-items-center will-change-transform">
-          <div className="glow absolute h-[135%] w-[135%] rounded-full blur-2xl" aria-hidden="true" />
+          <div className="glow absolute h-[85%] w-[85%] rounded-full blur-2xl" aria-hidden="true" />
           <div ref={idleRef} className="will-change-transform">
             <Balloon
               stringRef={stringRef}
-              className="h-[46svh] w-auto drop-shadow-[0_18px_40px_rgba(120,40,65,0.28)]"
+              className="h-[38svh] w-auto drop-shadow-[0_18px_40px_rgba(120,40,65,0.28)]"
             />
           </div>
         </div>

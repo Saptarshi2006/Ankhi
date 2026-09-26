@@ -30,17 +30,25 @@ export default function TitleSpread() {
         /**
          * How far each word must travel to sit against its edge.
          *
-         * `offsetWidth` rather than `getBoundingClientRect().width`: the
-         * heading is mid-`scale` when this is measured, and the rect would
-         * report the *scaled* width, throwing the destination off by the
-         * scale factor.
+         * Derived from `offsetLeft` / `offsetWidth` on purpose. Those are
+         * layout coordinates and are immune to transforms, and this timeline
+         * scales the heading as it arrives — so measuring with
+         * `getBoundingClientRect()` (or reasoning about the rendered width)
+         * reads a value that changes mid-flight and throws the destination
+         * past the viewport edge.
          *
-         * Function-based, so `invalidateOnRefresh` re-evaluates it on resize.
+         * The heading is centred, so its untransformed left edge is
+         * `(viewport - headingWidth) / 2`, and by the time the spread runs the
+         * scale has settled to 1. That makes the arithmetic exact.
          */
-        const travel = (el: HTMLSpanElement | null, dir: -1 | 1) => () => {
-          if (!el) return 0;
+        const travelTo = (el: HTMLSpanElement | null, edge: "left" | "right") => () => {
+          const title = titleRef.current;
+          if (!el || !title) return 0;
           const pad = window.innerWidth < 640 ? 20 : 48;
-          return dir * (window.innerWidth / 2 - el.offsetWidth / 2 - pad);
+          const titleLeft = (window.innerWidth - title.offsetWidth) / 2;
+          return edge === "left"
+            ? pad - (titleLeft + el.offsetLeft)
+            : window.innerWidth - pad - (titleLeft + el.offsetLeft + el.offsetWidth);
         };
 
         const tl = gsap.timeline({
@@ -61,12 +69,22 @@ export default function TitleSpread() {
         )
           .to(
             leftRef.current,
-            { x: travel(leftRef.current, -1), rotate: -5, duration: 0.52, ease: "power2.inOut" },
+            {
+              x: travelTo(leftRef.current, "left"),
+              rotate: -5,
+              duration: 0.52,
+              ease: "power2.inOut",
+            },
             0.18,
           )
           .to(
             rightRef.current,
-            { x: travel(rightRef.current, 1), rotate: 5, duration: 0.52, ease: "power2.inOut" },
+            {
+              x: travelTo(rightRef.current, "right"),
+              rotate: 5,
+              duration: 0.52,
+              ease: "power2.inOut",
+            },
             0.18,
           )
           .to(

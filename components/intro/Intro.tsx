@@ -54,18 +54,18 @@ export default function Intro() {
 
       const root = document.documentElement;
       if (locked) {
-        root.style.overflow = "hidden";
-        document.body.style.overflow = "hidden";
+        // Not `overflow: hidden` — see the note on `.scroll-locked`. Changing
+        // the scrollport re-resolves the sticky frame and the balloon jumps
+        // off screen at the moment the lock lands.
+        root.classList.add("scroll-locked");
         lenis?.stop();
         // `passive: false` is required or the browser ignores preventDefault.
         document.addEventListener("touchmove", blockTouch, { passive: false });
       } else {
-        root.style.overflow = "";
-        document.body.style.overflow = "";
+        root.classList.remove("scroll-locked");
         lenis?.start();
         document.removeEventListener("touchmove", blockTouch);
-        // Toggling overflow changes the document's scrollable height, which
-        // invalidates every cached trigger position downstream.
+        // Re-measure: the lock changes how far the document can scroll.
         requestAnimationFrame(() => ScrollTrigger.refresh());
       }
     },
