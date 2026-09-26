@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
+import { useAllowMotion } from "@/lib/motion-pref";
 import Balloon from "./Balloon";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -44,99 +45,97 @@ export default function BalloonStage({
   const veilRef = useRef<HTMLDivElement>(null);
   const scrubRef = useRef<gsap.core.Tween | null>(null);
   const armGuard = useRef(false);
+  const allowMotion = useAllowMotion();
 
   useGSAP(
     () => {
-      const mm = gsap.matchMedia();
-
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        // Idle life. Runs on its own so it survives the scrub untouched.
-        gsap.to(idleRef.current, {
-          y: -10,
-          rotate: 3,
-          duration: 2.6,
-          ease: "sine.inOut",
-          yoyo: true,
-          repeat: -1,
-        });
-
-        gsap
-          .timeline({ repeat: -1, yoyo: true, defaults: { duration: 3.2, ease: "sine.inOut" } })
-          .to(stringRef.current, { rotation: 7, svgOrigin: "100 212" })
-          .to(stringRef.current, { rotation: -7, svgOrigin: "100 212" });
-
-        // Phase A — approach.
-        //
-        // The end is measured in viewport heights rather than pinned to the
-        // section's own edges. Ending at "bottom bottom" completes growth at
-        // the exact instant the sticky frame unpins, so the balloon reaches
-        // full size while the frame is already flying away — by the time the
-        // scroll locks, the balloon is off the top of the screen. Finishing
-        // 1.4 screens in leaves the frame pinned and still for the remaining
-        // 0.6, which is the shot the reader is actually meant to see.
-        //
-        // A factory, not a shared object: ScrollTrigger mutates the config it
-        // is given, so handing the same literal to two triggers corrupts the
-        // first one's cached geometry.
-        const growth = () => ({
-          trigger: sectionRef.current,
-          start: "top top",
-          end: () => "+=" + window.innerHeight * GROWTH_VH,
-          invalidateOnRefresh: true,
-        });
-
-        scrubRef.current = gsap.fromTo(
-          scrollRef.current,
-          { scale: START_SCALE, y: "-30vh" },
-          {
-            scale: MAX_SCALE,
-            y: "0vh",
-            ease: "none",
-            scrollTrigger: {
-              ...growth(),
-              scrub: 0.4,
-              onUpdate: (self: { progress: number }) => {
-                if (self.progress >= 0.999 && !armGuard.current) {
-                  armGuard.current = true;
-                  onArm();
-                }
-              },
-            },
-          },
-        );
-
-        gsap.fromTo(
-          veilRef.current,
-          { opacity: 0 },
-          { opacity: 0.85, ease: "none", scrollTrigger: { ...growth(), scrub: true } },
-        );
-
-        // ...and back out again as the stage leaves. Without this the veil
-        // scrolls off as a hard-edged pink band across the top of the screen.
-        gsap.to(veilRef.current, {
-          opacity: 0,
-          ease: "none",
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: () => "+=" + window.innerHeight * GROWTH_VH,
-            end: "bottom bottom",
-            scrub: true,
-            invalidateOnRefresh: true,
-          },
-        });
-
-        return () => {
-          scrubRef.current?.scrollTrigger?.kill();
-          scrubRef.current = null;
-        };
-      });
-
-      mm.add("(prefers-reduced-motion: reduce)", () => {
+      if (!allowMotion) {
         // Decoration only: no scrub, no lock, nothing to click.
         gsap.set(scrollRef.current, { scale: 0.62, y: "-6vh" });
+        return;
+      }
+
+      // Idle life. Runs on its own so it survives the scrub untouched.
+      gsap.to(idleRef.current, {
+        y: -10,
+        rotate: 3,
+        duration: 2.6,
+        ease: "sine.inOut",
+        yoyo: true,
+        repeat: -1,
       });
+
+      gsap
+        .timeline({ repeat: -1, yoyo: true, defaults: { duration: 3.2, ease: "sine.inOut" } })
+        .to(stringRef.current, { rotation: 7, svgOrigin: "100 212" })
+        .to(stringRef.current, { rotation: -7, svgOrigin: "100 212" });
+
+      // Phase A — approach.
+      //
+      // The end is measured in viewport heights rather than pinned to the
+      // section's own edges. Ending at "bottom bottom" completes growth at
+      // the exact instant the sticky frame unpins, so the balloon reaches
+      // full size while the frame is already flying away — by the time the
+      // scroll locks, the balloon is off the top of the screen. Finishing
+      // 1.4 screens in leaves the frame pinned and still for the remaining
+      // 0.6, which is the shot the reader is actually meant to see.
+      //
+      // A factory, not a shared object: ScrollTrigger mutates the config it
+      // is given, so handing the same literal to two triggers corrupts the
+      // first one's cached geometry.
+      const growth = () => ({
+        trigger: sectionRef.current,
+        start: "top top",
+        end: () => "+=" + window.innerHeight * GROWTH_VH,
+        invalidateOnRefresh: true,
+      });
+
+      scrubRef.current = gsap.fromTo(
+        scrollRef.current,
+        { scale: START_SCALE, y: "-30vh" },
+        {
+          scale: MAX_SCALE,
+          y: "0vh",
+          ease: "none",
+          scrollTrigger: {
+            ...growth(),
+            scrub: 0.4,
+            onUpdate: (self: { progress: number }) => {
+              if (self.progress >= 0.999 && !armGuard.current) {
+                armGuard.current = true;
+                onArm();
+              }
+            },
+          },
+        },
+      );
+
+      gsap.fromTo(
+        veilRef.current,
+        { opacity: 0 },
+        { opacity: 0.85, ease: "none", scrollTrigger: { ...growth(), scrub: true } },
+      );
+
+      // ...and back out again as the stage leaves. Without this the veil
+      // scrolls off as a hard-edged pink band across the top of the screen.
+      gsap.to(veilRef.current, {
+        opacity: 0,
+        ease: "none",
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: () => "+=" + window.innerHeight * GROWTH_VH,
+          end: "bottom bottom",
+          scrub: true,
+          invalidateOnRefresh: true,
+        },
+      });
+
+      return () => {
+        scrubRef.current?.scrollTrigger?.kill();
+        scrubRef.current = null;
+      };
     },
-    { scope: sectionRef },
+    { scope: sectionRef, dependencies: [allowMotion] },
   );
 
   // Phase B — armed. The pulse rides `idleRef` rather than `scrollRef` so it

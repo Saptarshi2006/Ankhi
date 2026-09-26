@@ -11,6 +11,7 @@ import {
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useAllowMotion } from "./motion-pref";
 import "lenis/dist/lenis.css";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -34,6 +35,7 @@ export const useLenis = () => useContext(LenisContext);
 
 export function SmoothScroll({ children }: { children: ReactNode }) {
   const instanceRef = useRef<Lenis | null>(null);
+  const allowMotion = useAllowMotion();
 
   // Created exactly once, so the context value is referentially stable and no
   // consumer re-renders merely because scroll was initialised. The lazy
@@ -45,9 +47,9 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
   }));
 
   useEffect(() => {
-    // Reduced motion skips the smooth-scroll layer entirely: native scrolling
-    // is the accessible default, and nothing here should override it.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // With motion off there is nothing to smooth: native scrolling is the
+    // accessible default, and nothing here should override it.
+    if (!allowMotion) {
       ScrollTrigger.refresh();
       return;
     }
@@ -80,7 +82,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       instance.destroy();
       instanceRef.current = null;
     };
-  }, []);
+  }, [allowMotion]);
 
   return <LenisContext.Provider value={handle}>{children}</LenisContext.Provider>;
 }

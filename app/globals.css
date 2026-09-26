@@ -127,28 +127,59 @@ body {
 }
 
 /*
- * Reduced motion: collapse the scroll tracks so there is nothing to scrub,
- * and unpin. The balloon becomes a static decoration, the title sits centred,
- * and the letter renders immediately. No scroll lock, no click required.
+ * Reduced motion.
+ *
+ * Keyed off `data-motion` rather than the media query directly, because the
+ * reader can override the system setting from the corner toggle. The attribute
+ * is resolved pre-paint by the inline script in the layout, and mirrors
+ * `lib/motion-pref.ts`.
+ *
+ * The tracks collapse so there is nothing to scrub: the balloon becomes static
+ * decoration, the title sits centred, the letter renders straight away. No
+ * scroll lock and no click required.
+ *
+ * The media query block is the no-JS fallback — without the script the
+ * attribute is never set.
  */
+html[data-motion="off"] {
+  --track-balloon: 100svh;
+}
+
+html[data-motion="off"] .track-title {
+  height: auto;
+  padding-block: 14vh;
+}
+
+html[data-motion="off"] .track-title .sticky-viewport {
+  position: static;
+  height: auto;
+  overflow: visible;
+}
+
+/* Stop the pulse, but leave `opacity` alone. This selector outranks Tailwind's
+   `opacity-0`, so setting opacity here would pin the hint visible even when
+   the balloon is not armed. */
+html[data-motion="off"] .pulse-hint {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  html:not([data-motion]) {
     --track-balloon: 100svh;
   }
 
-  .track-title {
+  html:not([data-motion]) .track-title {
     height: auto;
     padding-block: 14vh;
   }
 
-  .track-title .sticky-viewport {
+  html:not([data-motion]) .track-title .sticky-viewport {
     position: static;
     height: auto;
     overflow: visible;
   }
 
-  .pulse-hint {
+  html:not([data-motion]) .pulse-hint {
     animation: none;
-    opacity: 1;
   }
 }

@@ -216,8 +216,11 @@ test.describe("balloon intro", () => {
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("never locks the scroll and shows the letter outright", async ({ page }) => {
+  test("defaults to the static path and never locks the scroll", async ({ page }) => {
     await page.goto("/");
+
+    // The inline bootstrap script resolves this before first paint.
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
 
     await expect(lines(page)).toHaveCount(12);
 
@@ -227,5 +230,88 @@ test.describe("reduced motion", () => {
     // The prompt is the marker for the locked state; it must never appear.
     await expectPromptGone(page);
     expect(await isLocked(page)).toBe(false);
+  });
+
+  test("plays the full choreography when the reader explicitly enables it", async ({ browser }) => {
+    // The system says reduce; the reader says otherwise. The reader wins.
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    await context.addInitScript(() => {
+      try {
+        localStorage.setItem("ankhi:motion", "on");
+      } catch {
+        /* storage blocked */
+      }
+    });
+    const page = await context.newPage();
+    await page.goto("/");
+
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
+
+    // The balloon grows and arms exactly as it does with no preference at all.
+    const small = (await balloon(page).boundingBox())!.height;
+    await scrollBy(page, 900);
+    expect((await balloon(page).boundingBox())!.height).toBeGreaterThan(small * 2);
+
+    await growUntilArmed(page);
+    await expectPromptShown(page);
+    expect(await isLocked(page)).toBe(true);
+
+    const framed = await page.evaluate(() => {
+      const rect = document.querySelector('svg[viewBox="0 0 200 320"]')!.getBoundingClientRect();
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        vh: window.innerHeight,
+        stickyTop: Math.round(
+          document.querySelector(".sticky-viewport")!.getBoundingClientRect().top,
+        ),
+      };
+    });
+    expect(framed.stickyTop).toBe(0);
+    expect(framed.top).toBeGreaterThan(-40);
+    expect(framed.bottom).toBeLessThan(framed.vh + 40);
+
+    await context.close();
+  });
+
+  test("the corner toggle overrides the system setting without a reload", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+
+    const toggle = page.locator("[data-motion-toggle]");
+    await expect(toggle).toContainText("Auto");
+
+    // auto -> on
+    await toggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
+
+    // and back round to off, then to auto again
+    await toggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+    await toggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+    await expect(toggle).toContainText("Auto");
+  });
+
+  test("turning motion off while armed releases the lock", async ({ page }) => {
+    await page.goto("/");
+
+    // Opt in, then get the balloon to arm.
+    await page.locator("[data-motion-toggle]").click();
+    await growUntilArmed(page);
+    await expectPromptShown(page);
+    expect(await isLocked(page)).toBe(true);
+
+    // Opt back out. The tracks collapse and the balloon goes with them, so a
+    // surviving lock would be an unescapable dead page.
+    await page.locator("[data-motion-toggle]").click();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+    await expect.poll(() => isLocked(page)).toBe(false);
+    await expectPromptGone(page);
+
+    // The document is live again rather than frozen where the lock left it.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 });

@@ -5,6 +5,7 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
+import { useAllowMotion } from "@/lib/motion-pref";
 import { letter } from "@/content/letter";
 
 gsap.registerPlugin(ScrollTrigger, SplitText);
@@ -22,43 +23,41 @@ gsap.registerPlugin(ScrollTrigger, SplitText);
  */
 export default function Letter() {
   const sectionRef = useRef<HTMLElement>(null);
+  const allowMotion = useAllowMotion();
 
   useGSAP(
     () => {
-      const mm = gsap.matchMedia();
-
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        const lines = gsap.utils.toArray<HTMLElement>("[data-line]", sectionRef.current);
-
-        const splits = lines.map((line) =>
-          SplitText.create(line, {
-            type: "words",
-            // Re-split on font load and on resize, so the word count matches
-            // the layout that is actually on screen.
-            autoSplit: true,
-            onSplit: (self) =>
-              gsap.from(self.words, {
-                yPercent: 105,
-                opacity: 0,
-                duration: 0.85,
-                ease: "power3.out",
-                stagger: 0.04,
-                scrollTrigger: {
-                  trigger: line,
-                  start: "top 86%",
-                  toggleActions: "play none none reverse",
-                },
-              }),
-          }),
-        );
-
-        return () => splits.forEach((split) => split.revert());
-      });
-
-      // Under reduced motion no branch runs at all: the lines keep their
+      // With motion off there is nothing to set up: the lines keep their
       // server-rendered state and are simply there.
+      if (!allowMotion) return;
+
+      const lines = gsap.utils.toArray<HTMLElement>("[data-line]", sectionRef.current);
+
+      const splits = lines.map((line) =>
+        SplitText.create(line, {
+          type: "words",
+          // Re-split on font load and on resize, so the word count matches
+          // the layout that is actually on screen.
+          autoSplit: true,
+          onSplit: (self) =>
+            gsap.from(self.words, {
+              yPercent: 105,
+              opacity: 0,
+              duration: 0.85,
+              ease: "power3.out",
+              stagger: 0.04,
+              scrollTrigger: {
+                trigger: line,
+                start: "top 86%",
+                toggleActions: "play none none reverse",
+              },
+            }),
+        }),
+      );
+
+      return () => splits.forEach((split) => split.revert());
     },
-    { scope: sectionRef },
+    { scope: sectionRef, dependencies: [allowMotion] },
   );
 
   return (

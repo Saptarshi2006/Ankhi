@@ -34,7 +34,7 @@ Six phases, driven by a scroll position rather than by time.
 
 | Phase | What happens |
 | --- | --- |
-| A | Balloon grows from `scale(0.12)` toward the viewer, scrubbing over a 160vh track |
+| A | Balloon grows from `scale(0.34)` toward the viewer, scrubbing over 1.4 screens |
 | B | At full size the scroll **locks** and a prompt appears |
 | C | Click or any key pops it — canvas burst, synthesised pop, lock released |
 | D | "Happy 19th" arrives at centre |
@@ -43,6 +43,9 @@ Six phases, driven by a scroll position rather than by time.
 
 State lives in one place, `components/intro/Intro.tsx`, as
 `approach → armed → popping → letter`. Everything else takes props off that.
+
+Two controls sit in the top corners: sound, and motion (`Auto` / `Motion` /
+`Still`). Both persist to `localStorage`.
 
 ### Decisions worth knowing before editing
 
@@ -92,9 +95,17 @@ thing on this site that must never be missing.
 SplitText exists for the per-line word stagger, and the rewrite emits `<div>`s
 (the line keeps its own `aria-label`, fragments are `aria-hidden`).
 
-**Reduced motion is a real path, not a degradation.** The tracks collapse, the
-balloon becomes static decoration, the title sits centred and the letter renders
-straight away. No lock, no click required.
+**Reduced motion is a three-state preference, not a hard disable.** `auto` (the
+default) follows the OS. The corner toggle cycles `auto → on → off`, so anyone
+who left `prefers-reduced-motion` on globally — it is a system-wide setting, not
+a per-site one — can still get the choreography without editing the OS. The
+resolved value is published as `<html data-motion>` by an inline script in the
+layout, and **re-asserted from a layout effect**, because React reclaims the
+`<html>` element during hydration and drops the attribute it does not know about.
+
+**The hint's reduced-motion rule must not set `opacity`.** That selector outranks
+Tailwind's `opacity-0`, so adding `opacity: 1` to stop the pulse animation pins
+the prompt visible even when the balloon is not armed.
 
 ## Adding the next section
 

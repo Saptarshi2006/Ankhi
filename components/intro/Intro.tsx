@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLenis } from "@/lib/smooth-scroll";
+import { useAllowMotion } from "@/lib/motion-pref";
 import { useSoundEnabled } from "@/lib/sound-pref";
 import { playPop } from "@/lib/sound";
 import Signature from "@/components/Signature";
 import SoundToggle from "@/components/SoundToggle";
+import MotionToggle from "@/components/MotionToggle";
 import BalloonStage from "./BalloonStage";
 import Burst from "./Burst";
 import TitleSpread from "./TitleSpread";
@@ -47,6 +49,12 @@ export default function Intro() {
   const phaseRef = useRef<Phase>("approach");
   const lockedRef = useRef(false);
 
+  const allowMotion = useAllowMotion();
+  const allowMotionRef = useRef(allowMotion);
+  useEffect(() => {
+    allowMotionRef.current = allowMotion;
+  }, [allowMotion]);
+
   const setLocked = useCallback(
     (locked: boolean) => {
       if (lockedRef.current === locked) return;
@@ -73,6 +81,10 @@ export default function Intro() {
   );
 
   const arm = useCallback(() => {
+    // Read through a ref, not the render closure: turning motion off leaves a
+    // window where a ScrollTrigger created a moment ago can still fire before
+    // React tears it down, and that must not lock the page.
+    if (!allowMotionRef.current) return;
     if (phaseRef.current !== "approach") return;
     phaseRef.current = "armed";
     setPhase("armed");
@@ -117,14 +129,27 @@ export default function Intro() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [phase, pop]);
 
+  // Turning motion off mid-intro must not leave the reader trapped: the tracks
+  // collapse, the balloon goes with them, and a lock with nothing to click is a
+  // dead page. Only unwind if we had not already been let through.
+  useEffect(() => {
+    if (allowMotion) return;
+    if (phaseRef.current === "armed" || phaseRef.current === "popping") {
+      phaseRef.current = "approach";
+      setPhase("approach");
+    }
+    setLocked(false);
+  }, [allowMotion, setLocked]);
+
   // Release the lock on unmount, so a fast refresh mid-intro cannot strand the
-  // page at overflow: hidden.
+  // page.
   useEffect(() => () => setLocked(false), [setLocked]);
 
   return (
     <>
       <Signature />
       <SoundToggle />
+      <MotionToggle />
       <Burst runKey={burstKey} />
       <BalloonStage
         armed={phase === "armed"}
