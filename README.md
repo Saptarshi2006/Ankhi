@@ -120,6 +120,13 @@ It also clears anything in the output it did not produce. The output directory
 had 329KB of the retired crowd beds sitting in it — gitignored, so invisible in
 `git status`, and still shipping.
 
+### What it costs
+
+615 seconds of music, about **6.2MB**, which is two thirds of the site. It is
+loaded one slot at a time and the first paint does not wait for any of it, so
+the number that matters on arrival is 3.8MB — the site without music — plus the
+opening track.
+
 ### Loading, and loading nothing
 
 Slots are fetched and decoded on demand, and the next beat's is preloaded as the

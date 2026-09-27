@@ -70,6 +70,13 @@ export default function Timeline() {
 
     let current: number | null = null;
 
+    /*
+     * The first beat's slot, on the chance the intro's preloads did not run —
+     * muted on arrival, or audio unlocked after the section was already passing.
+     * `crossfade` remembers the intention if it is not ready yet.
+     */
+    getScore()?.preload(SLOT_FOR_BEAT[0]);
+
     const trigger = ScrollTrigger.create({
       trigger: section,
       start: () => sectionRange(section).start,

@@ -48,6 +48,24 @@ const newe = async (a, b) => {
   }
 };
 
+/**
+ * Whether an output is worth keeping.
+ *
+ * The skip check is mtime against the source, which is fast and normally right —
+ * and completely wrong after a run that failed partway through. ffmpeg leaves a
+ * zero-byte file with a fresh timestamp, every later run then skips it as
+ * "current", and the slot is silently missing forever. So a candidate is only
+ * trusted if it has real bytes and a real duration.
+ */
+async function readable(path) {
+  try {
+    const { size } = await stat(path);
+    return size > 4096 && (await durationOf(path)) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Source duration in seconds, or 0 if the file cannot be read. */
 async function durationOf(path) {
   try {
@@ -98,7 +116,6 @@ async function findSource(base) {
 
 let cut = 0;
 const missing = [];
-const available = [];
 
 for (const { slot, file, inSec, outSec, gainDb = 0 } of music) {
   const source = await findSource(file);
@@ -108,7 +125,7 @@ for (const { slot, file, inSec, outSec, gainDb = 0 } of music) {
   }
 
   const output = join(OUT, `${slot}.m4a`);
-  if (!(await newe(source, output))) {
+  if ((await newe(source, output)) === false && (await readable(output))) {
     console.log(`  ${slot}.m4a is current, skipping`);
     continue;
   }
@@ -149,6 +166,16 @@ for (const { slot, file, inSec, outSec, gainDb = 0 } of music) {
     "-y",
     "-i", source,
     "-af", filters.join(","),
+    /*
+     * Audio only, and explicitly.
+     *
+     * Five of eight of these carry an embedded cover-art JPEG as a second
+     * stream, and the MP4 muxer will happily try to put it in the .m4a — then
+     * fail with "Could not find tag for codec h264". `-vn` alone is not enough
+     * with a muxer that wants a video track; the stream has to be named.
+     */
+    "-map", "0:a:0",
+    "-vn",
     "-c:a", "aac",
     "-b:a", "80k",
     "-ac", "2",
@@ -160,7 +187,6 @@ for (const { slot, file, inSec, outSec, gainDb = 0 } of music) {
 
   const { size } = await stat(output);
   cut += 1;
-  available.push(slot);
   console.log(
     `  ${slot.padEnd(8)} ${seconds.toFixed(0).padStart(3)}s  ` +
       `${from.toFixed(0)}–${to.toFixed(0)}s of ${file}  ${(size / 1000).toFixed(0)}KB` +
@@ -169,14 +195,22 @@ for (const { slot, file, inSec, outSec, gainDb = 0 } of music) {
 }
 
 /*
- * Publish what was actually cut.
+ * Publish what is actually on disk.
  *
- * Without this the site asks for all eight slots and gets six 404s logged in the
- * console on every visit until the music is in place. With it the score knows the
- * set up front, asks for nothing that is not there, and "no music yet" is a
- * silent state rather than a broken-looking one.
+ * Without this the site asks for all eight slots and logs a 404 for each on
+ * every visit until the music is in place. With it the score knows the set
+ * up front, asks for nothing that is not there, and "no music yet" is a silent
+ * state rather than a broken-looking one.
+ *
+ * Derived by checking each output, not by recording what this invocation cut —
+ * a run where everything is already current would otherwise publish an empty
+ * list and silence a site that has all its music.
  */
-await writeFile(join(OUT, "manifest.json"), `${JSON.stringify({ slots: available }, null, 2)}\n`);
+const onDisk = [];
+for (const { slot } of music) {
+  if (await readable(join(OUT, `${slot}.m4a`))) onDisk.push(slot);
+}
+await writeFile(join(OUT, "manifest.json"), `${JSON.stringify({ slots: onDisk }, null, 2)}\n`);
 
 if (missing.length) {
   console.log(`\n  ${cut} cut, ${missing.length} slot(s) have no source yet:`);

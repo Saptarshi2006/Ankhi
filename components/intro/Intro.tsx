@@ -175,6 +175,15 @@ export default function Intro() {
     // Only the opening track is needed before the pop. The rest is fetched as
     // each beat is approached, so the first paint is not carrying a megabyte of
     // music it will not play for another minute.
+    /*
+     * The return and the first year are needed within seconds of this — the pop
+     * can come immediately, and the timeline follows the intro. Neither was
+     * being preloaded, so the pop silenced the music with nothing to bring back
+     * and the first beat had no track at all.
+     */
+    score.preload(SLOT.return);
+    score.preload(SLOT.beat0);
+
     void score.load(SLOT.intro).then((ok) => {
       if (!ok) return;
       /*

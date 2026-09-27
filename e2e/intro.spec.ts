@@ -45,6 +45,20 @@ async function scrollBy(page: Page, total: number, steps = 14) {
  * tested being broken — a jump to 7056 silently became 3224, which is not
  * inside any beat at all.
  */
+/**
+ * A scroll position at `fraction` of the way through the pinned timeline.
+ *
+ * `fraction` is in units of beats, so 0.5 is the middle of the first year and
+ * 3 is the start of the fourth.
+ */
+async function beatFraction(page: Page, beatsIn: number) {
+  return page.evaluate((f) => {
+    const spacer = document.querySelector<HTMLElement>("[data-timeline]")!.parentElement!;
+    const top = Math.round(spacer.getBoundingClientRect().top + scrollY);
+    return top + Math.round((spacer.clientHeight - innerHeight) * (f / 6));
+  }, beatsIn);
+}
+
 async function jumpTo(page: Page, y: number) {
   await expect
     .poll(
@@ -1100,13 +1114,26 @@ const seen = (page: Page, beat: number) =>
     await expect.poll(async () => (await asked()).length, { timeout: 8000 }).toBeGreaterThan(0);
 
     /*
-     * After the gesture it reads the manifest, and asks only for slots the
-     * encoder actually produced. With no music in the project that is the
-     * manifest and nothing else — no 404s, which is the whole point of
-     * publishing it.
+     * After the gesture it reads the manifest, and then asks only for slots the
+     * encoder actually produced. Anything it requests must be in the manifest it
+     * just read — which is the property that stops the site filling the console
+     * with 404s, and the reason the manifest exists at all.
      */
+    const declared = await page.evaluate(async () => {
+      const response = await fetch("/audio/manifest.json");
+      return ((await response.json()) as { slots: string[] }).slots;
+    });
+
     await expect
-      .poll(async () => (await asked()).every((u) => u.endsWith("/audio/manifest.json")))
+      .poll(async () => {
+        // Reduced to bare slot names: what is recorded is whatever form of the
+        // URL the caller passed, and the same file can arrive as a string, a
+        // `Request`, or a full URL.
+        const requested = (await asked()).map((u) => u.split("/").pop() ?? "");
+        const stray = requested.filter((n) => n.endsWith(".m4a") && !declared.includes(n.slice(0, -4)));
+        if (stray.length) throw new Error(`asked for slots that were never cut: ${stray.join(", ")}`);
+        return true;
+      })
       .toBe(true);
   });
 
@@ -1185,38 +1212,120 @@ const seen = (page: Page, beat: number) =>
     });
   });
 
-  test("the site runs with no music present at all", async ({ page }) => {
-    /*
-     * The state the project is in right now: the manifest is declared and the
-     * engine is built, but `content/audio/music/` is empty, so every slot 404s.
-     * The site must still load, still pop, and not throw — the pop is the one
-     * sound that has to be right.
-     */
-    const errors: string[] = [];
-    page.on("pageerror", (e) => errors.push(e.message.slice(0, 160)));
-    page.on("console", (m) => {
-      if (m.type() === "error") errors.push(m.text().slice(0, 160));
+  test("every slot the manifest declares reaches the reader", async ({ page }) => {
+    test.slow();
+    await page.addInitScript(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const audio = { requests: [] as string[] };
+      (w as Record<string, unknown>).__audio = audio;
+      const fetchImpl = window.fetch.bind(window);
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/audio/")) audio.requests.push(String(input).split("/").pop() ?? "");
+        return fetchImpl(input, init);
+      };
     });
 
     await page.goto("/");
+    await page.waitForTimeout(700);
+    const box = page.viewportSize()!;
+    await page.mouse.click(Math.round(box.width / 2), Math.round(box.height * 0.6));
     await growUntilArmed(page);
     await page.locator(".sticky-viewport").first().click();
     await waitForScrollSettle(page);
 
-    // Straight through the timeline, past every beat, at each one's hero.
-    const hero = await stageIndex(page, 0, "hero");
+    // The manifest is what stops the site asking for slots that were never cut.
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (window as never as { __audio: { requests: string[] } }).__audio.requests),
+      )
+      .toContain("manifest.json");
+
     for (let beat = 0; beat < beats.length; beat += 1) {
-      await jumpTo(page, await stageY(page, beat, hero, 0.8));
+      for (const f of [0.15, 0.6, 0.95]) {
+        await jumpTo(page, await beatFraction(page, beat + f));
+      }
     }
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            (window as never as { __audio: { requests: string[] } }).__audio.requests.filter((r) =>
+              r.endsWith(".m4a"),
+            ).length,
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(music.length);
+  });
 
-    // The letter is still reachable and still readable.
-    const bottom = await page.evaluate(
-      () => document.documentElement.scrollHeight - window.innerHeight,
+  test("the pop lands inside a real silence, and the music comes back", async ({ page }) => {
+    test.slow();
+    await page.addInitScript(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const audio = { gains: [] as AudioNode[] };
+      (w as Record<string, unknown>).__audio = audio;
+      const Real = window.AudioContext;
+      (window as unknown as { AudioContext: unknown }).AudioContext = class extends Real {
+        constructor(...args: unknown[]) {
+          // @ts-expect-error spreading into super
+          super(...args);
+          const createGain = this.createGain.bind(this);
+          this.createGain = () => {
+            const g = createGain();
+            audio.gains.push(g);
+            return g;
+          };
+        }
+      };
+    });
+
+    await page.goto("/");
+    await page.waitForTimeout(700);
+    const box = page.viewportSize()!;
+    await page.mouse.click(Math.round(box.width / 2), Math.round(box.height * 0.6));
+    await growUntilArmed(page);
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (window as never as { __audio: { gains: unknown[] } }).__audio.gains.length),
+      )
+      .toBeGreaterThan(1);
+
+    // Sample the whole gain graph every frame across the pop.
+    await page.evaluate(() => {
+      const a = (window as never as { __audio: { gains: AudioNode[] } }).__audio;
+      const w = window as unknown as { __trace: [number, number[]][] };
+      w.__trace = [];
+      const t0 = performance.now();
+      const tick = () => {
+        w.__trace.push([
+          Math.round(performance.now() - t0),
+          a.gains.map((g) => Number((g as GainNode).gain.value.toFixed(4))),
+        ]);
+        if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.locator(".sticky-viewport").first().click();
+    await page.waitForTimeout(3400);
+
+    const trace = await page.evaluate(
+      () => (window as never as { __trace: [number, number[]][] }).__trace,
     );
-    await jumpTo(page, bottom);
-    await expect(lines(page)).toHaveCount(12);
+    const flat = trace.flatMap(([, gains]) => gains);
+    const quietest = Math.min(...flat);
 
-    expect(errors, errors.join(" | ")).toHaveLength(0);
+    /*
+     * The whole sequence is built on this. It failed once already with the crowd
+     * in place of the music: the surge cancelled the scheduled silence, the
+     * master eased 0.9 → 0.53 and stopped, and the pop landed on the crowd's
+     * tail. So the floor is asserted, not assumed.
+     */
+    expect(quietest, "the music never actually stopped").toBeLessThan(0.02);
+
+    // And something comes back afterwards, or the silence is just an ending.
+    const later = trace.filter(([t]) => t > 900).map(([, g]) => Math.max(...g));
+    expect(Math.max(...later), "nothing returned after the pop").toBeGreaterThan(0.3);
   });
 });
 

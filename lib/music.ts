@@ -67,6 +67,16 @@ export class Score {
   private readonly ramps = new Map<SlotId, Ramp>();
   private current: SlotId | null = null;
   private muted = false;
+  /**
+   * A transition that was asked for before its buffer arrived.
+   *
+   * Without this a crossfade to a slot that has not finished decoding is simply
+   * dropped, and the beat is silent until the reader happens to scroll again.
+   * Measured with the real files: `return` and `beat-0` were never preloaded, so
+   * the pop silenced the music and nothing came back, and the first year had no
+   * track at all. Latency on a phone makes this the normal case, not an edge one.
+   */
+  private wanted: { slot: SlotId; seconds: number; resolve: (v: boolean) => void } | null = null;
 
   private constructor(audio: AudioContext) {
     this.audio = audio;
@@ -249,14 +259,27 @@ export class Score {
    * Move to a new slot, crossfading from whatever is playing.
    *
    * A no-op if that slot is already current, which matters because the beat
-   * tracker runs on every scroll frame.
+   * tracker runs on every scroll frame. If the slot is still loading the
+   * intention is remembered and applied the moment its buffer lands.
    */
   crossfade(to: SlotId, seconds = BEAT_CROSSFADE): void {
-    if (to === this.current) return;
+    if (to === this.current) {
+      this.wanted = null;
+      return;
+    }
     if (this.muted) return;
 
     const incoming = this.voiceFor(to);
-    if (!incoming) return;
+    if (!incoming) {
+      // Remember, and retry once there is something to fade in. Only on success,
+      // so a slot that will never arrive does not retry on every scroll frame.
+      void this.load(to).then((ok) => {
+        if (ok && this.wanted?.slot === to) this.crossfade(to, this.wanted.seconds);
+      });
+      this.wanted = { slot: to, seconds, resolve: () => {} };
+      return;
+    }
+    this.wanted = null;
 
     const now = this.audio.currentTime;
     const outgoing = this.current;
@@ -332,7 +355,19 @@ export class Score {
   resume(slot: SlotId, at: number, seconds = 0.9, level = 1, from = 0): void {
     if (this.muted) return;
     const voice = this.voiceFor(slot);
-    if (!voice) return;
+    if (!voice) {
+      /*
+       * The return from the pop. There is no second chance at this one — the
+       * silence is already open and the pop is already scheduled, so a track
+       * that has not arrived by now has missed its moment. Load it, and take it
+       * as soon as it lands, even if that is slightly late: silence with no
+       * music after it is worse than a late entrance.
+       */
+      void this.load(slot).then((ok) => {
+        if (ok) this.resume(slot, this.audio.currentTime, seconds, level, from);
+      });
+      return;
+    }
     this.ramp(voice, from, level, at, seconds);
     this.current = slot;
   }
