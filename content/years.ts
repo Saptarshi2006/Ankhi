@@ -26,6 +26,16 @@ export type Photo = {
   id: string;
   /** Describes the image, for anyone who cannot see it. */
   alt: string;
+  /**
+   * Intrinsic size of the *shipped* file, which is always the 1200px rendition
+   * (`${id}-1200.webp`), never the source.
+   *
+   * Declaring the source size looks harmless — the container has a fixed box
+   * and the image is `object-cover`, so CSS wins either way — but it makes the
+   * browser reserve a box with the wrong aspect ratio before the bytes arrive,
+   * and a wrong intrinsic size is the kind of thing that silently reintroduces
+   * layout shift somewhere else later.
+   */
   width: number;
   height: number;
 };
@@ -74,10 +84,10 @@ export const beats: readonly Beat[] = [
     turn: "You were entirely a person before you were entirely yourself.",
     colour: "oklch(0.965 0.016 245)",
     photos: [
-      { id: "y1-a", alt: "PLACEHOLDER — a first birthday", width: 1200, height: 800 },
-      { id: "y1-b", alt: "PLACEHOLDER — small hands", width: 1200, height: 800 },
-      { id: "y1-c", alt: "PLACEHOLDER — a room she grew up in", width: 1200, height: 800 },
-      { id: "y1-d", alt: "PLACEHOLDER — being held", width: 1200, height: 800 },
+      { id: "y1-a", alt: "a baby in red and gold festival dress, a hand under her chin", width: 1200, height: 1776 },
+      { id: "y1-b", alt: "a toddler in a red hat and dungarees, a dark tilak on her forehead, smiling", width: 1200, height: 1697 },
+      { id: "y1-c", alt: "a girl in a blue and gold silk sari beside an older woman in a multicoloured sari, both standing in a doorway packed with flower garlands", width: 1200, height: 1362 },
+      { id: "y1-d", alt: "a young woman in a patterned knit sweater and jeans, sitting on steps beside a lake with sunglasses on her head", width: 1200, height: 1368 },
     ],
     clip: { id: "y1-v", startSec: 0, endSec: 8 },
   },
@@ -90,10 +100,10 @@ export const beats: readonly Beat[] = [
     herWords: "I'm not coming in.",
     colour: "oklch(0.955 0.030 205)",
     photos: [
-      { id: "y2-a", alt: "PLACEHOLDER — the chair", width: 1200, height: 800 },
-      { id: "y2-b", alt: "PLACEHOLDER — school", width: 1200, height: 800 },
-      { id: "y2-c", alt: "PLACEHOLDER — a first best friend", width: 1200, height: 800 },
-      { id: "y2-d", alt: "PLACEHOLDER — a bike", width: 1200, height: 800 },
+      { id: "y2-a", alt: "a young woman in a yellow top, looking straight at the camera between fronds of green leaves", width: 1200, height: 1470 },
+      { id: "y2-b", alt: "a girl with long wet hair in a navy hoodie, smiling back over her shoulder", width: 1200, height: 800 },
+      { id: "y2-c", alt: "a young woman in a yellow sari and red blouse wearing round sunglasses, both hands in her hair on a sunlit rooftop", width: 1200, height: 1600 },
+      { id: "y2-d", alt: "a young woman holding a bunch of sunflowers on a balcony above a river, laughing downward at sunset", width: 1200, height: 1600 },
     ],
     clip: { id: "y2-v", startSec: 0, endSec: 8 },
   },
@@ -106,10 +116,10 @@ export const beats: readonly Beat[] = [
     herWords: "It's fine. Everything's fine.",
     colour: "oklch(0.950 0.042 160)",
     photos: [
-      { id: "y3-a", alt: "PLACEHOLDER — a move, or a loss", width: 1200, height: 800 },
-      { id: "y3-b", alt: "PLACEHOLDER — the year she changed", width: 1200, height: 800 },
-      { id: "y3-c", alt: "PLACEHOLDER — a thing she kept", width: 1200, height: 800 },
-      { id: "y3-d", alt: "PLACEHOLDER — somewhere she went", width: 1200, height: 800 },
+      { id: "y3-a", alt: "a young woman in a white top photographed by phone flash at night, a small pendant at her throat", width: 1200, height: 1586 },
+      { id: "y3-b", alt: "a girl with long wavy hair resting her chin on her hand and looking at the camera in a dim room", width: 1200, height: 2133 },
+      { id: "y3-c", alt: "a young woman in a white printed top with her head tilted, silver jhumka earrings and a small nose ring", width: 1200, height: 1600 },
+      { id: "y3-d", alt: "a young woman in a red sari with a gold ear cuff, looking straight into the camera", width: 1200, height: 1600 },
     ],
     clip: { id: "y3-v", startSec: 0, endSec: 8 },
   },
@@ -122,10 +132,10 @@ export const beats: readonly Beat[] = [
     herWords: "You don't get it. You never get it.",
     colour: "oklch(0.950 0.045 100)",
     photos: [
-      { id: "y4-a", alt: "PLACEHOLDER — headphones", width: 1200, height: 800 },
-      { id: "y4-b", alt: "PLACEHOLDER — a first heartbreak", width: 1200, height: 800 },
-      { id: "y4-c", alt: "PLACEHOLDER — a kept secret", width: 1200, height: 800 },
-      { id: "y4-d", alt: "PLACEHOLDER — becoming herself", width: 1200, height: 800 },
+      { id: "y4-a", alt: "a woman in a bright pink sari standing on a wooden staircase beneath a wall of framed vintage posters", width: 1200, height: 1595 },
+      { id: "y4-b", alt: "a woman in a green blouse and red sari holding a decorated idol of Krishna, caught mid-sentence", width: 1200, height: 1200 },
+      { id: "y4-c", alt: "a woman in a cream and pink sari seated on stone steps against ochre-yellow walls, one hand lifted to her hair", width: 1200, height: 1595 },
+      { id: "y4-d", alt: "a woman in a dark green sari on a wide lawn with a domed white monument far behind her, holding sunglasses and looking down", width: 1200, height: 1595 },
     ],
     clip: { id: "y4-v", startSec: 0, endSec: 8 },
   },
@@ -138,10 +148,10 @@ export const beats: readonly Beat[] = [
     herWords: "I've got it handled.",
     colour: "oklch(0.945 0.050 55)",
     photos: [
-      { id: "y5-a", alt: "PLACEHOLDER — exams", width: 1200, height: 800 },
-      { id: "y5-b", alt: "PLACEHOLDER — deciding", width: 1200, height: 800 },
-      { id: "y5-c", alt: "PLACEHOLDER — a last day of school", width: 1200, height: 800 },
-      { id: "y5-d", alt: "PLACEHOLDER — the year she left", width: 1200, height: 800 },
+      { id: "y5-a", alt: "a girl in a cream top blowing out two candles on a cake in candlelight", width: 1200, height: 1593 },
+      { id: "y5-b", alt: "a woman in a cream printed kurta biting a spiral fried snack on a stick, a paper plate in her other hand, a garden behind her", width: 1200, height: 1595 },
+      { id: "y5-c", alt: "a woman in a cream sari and red blouse with gold jhumkas and red bangles, seated indoors with a hand at her hair", width: 1200, height: 2133 },
+      { id: "y5-d", alt: "a woman in a cream and peach sari standing before a large green carved door in a weathered white wall, padlocked and shuttered", width: 1200, height: 1595 },
     ],
     clip: { id: "y5-v", startSec: 0, endSec: 8 },
   },
@@ -156,10 +166,10 @@ export const beats: readonly Beat[] = [
     // The one beat in full colour, deliberately.
     fullColour: true,
     photos: [
-      { id: "y6-a", alt: "PLACEHOLDER — now", width: 1200, height: 800 },
-      { id: "y6-b", alt: "PLACEHOLDER — the two of you", width: 1200, height: 800 },
-      { id: "y6-c", alt: "PLACEHOLDER — this year", width: 1200, height: 800 },
-      { id: "y6-d", alt: "PLACEHOLDER — nineteen", width: 1200, height: 800 },
+      { id: "y6-a", alt: "a black-and-white mirror selfie of a woman wrapped in a patterned shawl, holding a phone up", width: 1200, height: 1595 },
+      { id: "y6-b", alt: "a woman in a black sequined sari with an open back, looking over her shoulder on a terrace", width: 1200, height: 2909 },
+      { id: "y6-c", alt: "a woman in a green sari and sunglasses standing against a wall of painted graffiti", width: 1200, height: 1595 },
+      { id: "y6-d", alt: "a woman in a red and gold sari, chin resting on her hand, at a table set with white plates", width: 1200, height: 1600 },
     ],
     clip: { id: "y6-v", startSec: 0, endSec: 8 },
   },

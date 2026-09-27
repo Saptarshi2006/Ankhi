@@ -293,8 +293,30 @@ Drop files in by the convention in `content/years.ts` — `y3-b.jpg`, `y5-v.mp4`
 than its source, so iterating on the site does not re-pay several minutes of
 x264 every time.
 
+The **extension has to be `.jpg`**, not `.jpeg`, for a photograph.
+`media:placeholders` skips a photo only when `y3-b.jpg` already exists, and
+`media:images` derives its output id by stripping whatever extension it finds —
+so a real `y3-b.jpeg` sitting beside a leftover `y3-b.jpg` would give two
+sources the same output name, and `readdir` order would decide which one wins.
+The placeholder would win.
+
+The twenty-four photographs are the real ones now. `content/years.ts` carries a
+description of each and the intrinsic size of the **1200px rendition**, which
+is what actually ships — not the size of the source file. Those are different
+numbers for all twenty-four, and declaring the source size makes the browser
+reserve a box with the wrong aspect ratio before the bytes arrive.
+
+Every one of the twenty-four is portrait, where the placeholders had all been
+3:2 landscape. The corner boxes are near-square (`min(26vmin, 25vw)` by
+`min(34vmin, 27vh)`) and fill with `object-cover`, so a portrait photograph
+keeps its full width and is cropped top and bottom, centred. Most survive at
+about 78% of their height; `y6-b` is 9:19 and keeps 43%, `y3-b` and `y5-c` keep
+58%. That is a crop, not a resize, so it is lossless and reversible — but it
+does mean those three are showing a band rather than a whole frame.
+
 `npm run media:placeholders` fabricates a full set so the pipeline is exercised
-before real assets exist. The placeholder clip sizes are **not** a payload
+before real assets exist. It is a no-op for the photographs now, since all
+twenty-four names are taken. The placeholder clip sizes are **not** a payload
 forecast — a smooth gradient is trivially compressible and real home footage is
 not. Plan against roughly 3.6MB on mobile and 9MB on desktop for real
 eight-second clips, and treat `startSec` / `endSec` as editorial: trimming is

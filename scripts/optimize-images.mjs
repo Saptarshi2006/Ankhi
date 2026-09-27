@@ -6,9 +6,8 @@
  * pipeline that stops that happening.
  *
  * The width set is fixed and every image gets all of them, upscaling if the
- * source is smaller. That is deliberate: it means a srcset is a static string
- * with no manifest to keep in sync, and therefore no way for a browser to
- * request a width that was never generated.
+ * source is smaller, so a consumer can never ask for a width that was not
+ * generated — there is no manifest to fall out of step with anything.
  *
  *   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/optimize-images.mjs
  */
@@ -21,7 +20,18 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MEDIA = join(ROOT, "content", "media");
 const OUT = join(ROOT, "public", "photos");
 
-/** Must match the srcset in components/timeline/YearMedia.tsx. */
+/**
+ * Every width any consumer asks for today.
+ *
+ * Only `-1200.webp` is referenced — `Quadrants` and the `Scene` hero fallback —
+ * so the other three are generated, shipped, and never requested. They are kept
+ * because a `srcset` is the obvious next step and the widths are then already
+ * on disk, but be aware this is currently paying for three unused files per
+ * photograph.
+ *
+ * If the set is ever trimmed to just 1200, also drop the `width`/`height` claim
+ * in `content/years.ts` to match whatever `src` actually resolves to.
+ */
 export const WIDTHS = [480, 768, 1200, 1600];
 
 const SOURCES = new Set([".jpg", ".jpeg", ".png", ".webp"]);

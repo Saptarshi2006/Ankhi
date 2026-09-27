@@ -1351,3 +1351,78 @@ test.describe("palette", () => {
     }
   });
 });
+
+  /*
+   * The photographs, checked as shipped rather than as declared.
+   *
+   * `src` is always the 1200px rendition, so that is the intrinsic size the
+   * browser has to be told about; the source dimensions in content/years.ts are
+   * what the *declared* size is derived from, and a transcription slip there
+   * is invisible until something reserves the wrong box. This asserts the file
+   * and the declaration agree.
+   */
+test("every quadrant image loads, and carries real alt text", async ({ page }) => {
+  const failed: string[] = [];
+  page.on("response", (r) => {
+    if (r.url().includes("/photos/") && !r.ok()) failed.push(`${r.status()} ${r.url()}`);
+  });
+
+  await page.goto("/");
+  await page.waitForSelector("[data-scene]");
+
+  // The rendered attributes, read from the DOM.
+  const rendered = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-quad] img")].map((i) => ({
+      src: i.getAttribute("src") ?? "",
+      alt: i.getAttribute("alt") ?? "",
+      w: i.getAttribute("width"),
+      h: i.getAttribute("height"),
+    })),
+  );
+
+  expect(rendered.length, "24 quadrant images exist").toBe(24);
+  expect(failed, "no photo request may 404").toEqual([]);
+
+  // Intrinsic decode, off the lazy path: a detached Image always loads.
+  const ids = beats.flatMap((b) => b.photos.map((p) => p.id));
+  const decoded = await page.evaluate(async (list) => {
+    const one = (id: string) =>
+      new Promise<{ id: string; ok: boolean; w: number; h: number; bytes: number }>((res) => {
+        const img = new Image();
+        const t = setTimeout(() => res({ id, ok: false, w: 0, h: 0, bytes: 0 }), 8000);
+        img.onload = () => {
+          clearTimeout(t);
+          res({ id, ok: true, w: img.naturalWidth, h: img.naturalHeight, bytes: 0 });
+        };
+        img.onerror = () => {
+          clearTimeout(t);
+          res({ id, ok: false, w: 0, h: 0, bytes: 0 });
+        };
+        img.src = `/photos/${id}-1200.webp`;
+      });
+    return Promise.all(list.map(one));
+  }, ids);
+
+  for (const d of decoded) {
+    console.log(
+      `${d.id.padEnd(6)} ${d.ok ? "ok" : "FAILED"}  ${d.w}x${d.h}  aspect=${d.w ? (d.w / d.h).toFixed(3) : "-"}`,
+    );
+  }
+  expect(decoded.filter((d) => !d.ok).map((d) => d.id), "every photo decodes").toEqual([]);
+
+  // The declared width/height must match the file, or the browser reserves the
+  // wrong box and the corner fly-in moves.
+  const byId = new Map(rendered.map((r) => [r.src.replace("/photos/", "").replace("-1200.webp", ""), r]));
+  const mismatched = decoded
+    .map((d) => {
+      const r = byId.get(d.id);
+      return r && (Number(r.w) !== d.w || Number(r.h) !== d.h)
+        ? `${d.id}: declared ${r.w}x${r.h}, file ${d.w}x${d.h}`
+        : null;
+    })
+    .filter(Boolean);
+  expect(mismatched, "declared dimensions match the encoded file").toEqual([]);
+
+  const noAlt = rendered.filter((r) => !r.alt.trim() || r.alt.startsWith("PLACEHOLDER"));
+  expect(noAlt.map((r) => `${r.src}: "${r.alt}"`), "real alt text on every photo").toEqual([]);
+});
