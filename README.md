@@ -497,3 +497,38 @@ default; `unrs-resolver` (ESLint's native resolver), `esbuild`, `fsevents` and
 `workerd` (Cloudflare's own runtime) are approved by exact version. Approve
 additions with `npm install-scripts approve <pkg>` rather than relaxing it.
 
+### The fun page
+
+A gate after the letter, and a page behind it: seven targets on a net, a ball on
+the penalty spot, and seven photographs and videos behind them.
+
+`content/fun.ts` is the manifest — deliberately separate from `content/years.ts`,
+which is the story. What they share is the media pipeline:
+`encode-videos.mjs` now flattens both manifests to `{ id, startSec, endSec }` and
+runs one pass, rather than there being two encoders to drift apart. The
+fun clips were trimmed to 8 seconds where they were longer.
+
+**The clips are silent.** `-an` strips audio from everything the encoder touches,
+which was already true of the timeline clips and is now also true of these four.
+The sound in the sources was deliberately not shipped and there is no unmute
+control, so the videos can autoplay on a hit — which is the only way they
+reliably autoplay at all, and `autoPlay` alone does not do it in WebKit. The
+playback is driven from an effect, the same way `Takeover` does it.
+
+**No physics.** The ball follows the pointer and lands where it is released. The
+reward is the photographs, and a mechanic that could be failed by flicking too
+hard would just be a way of not showing someone their own pictures. Every target
+is reachable on the first try, and every target is also a real `<button>` — a
+drag-only game is a game half the readers cannot play.
+
+The pitch is a flex column: goal, then the ground flowing from it, with the
+penalty area and the spot inside that. An earlier version positioned the ground
+with a viewport height and a matching constant for where the posts ended, which
+cannot both be right — viewport units are aspect-dependent, so on a phone the
+ball ended up outside the penalty area entirely. Flowing it means the join is
+structural.
+
+The gate is a real `<a href="/fun/">` with the hold layered on, so it works
+without JavaScript and announces as a link. That is also the whole difficulty: a
+link's own activation is what a short press triggers, so the click is prevented
+unconditionally and navigation happens from the completed hold instead.

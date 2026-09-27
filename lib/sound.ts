@@ -76,3 +76,50 @@ export function playPop(at?: number) {
   thump.start(now);
   thump.stop(now + 0.18);
 }
+
+/* --------------------------------------------------------------- the net rustle */
+
+/**
+ * A target going, for the fun page.
+ *
+ * Filtered noise with a slow swell rather than a tone. A tone would read as a
+ * UI confirmation — a beep, a chime, an achievement — and this is meant to read
+ * as a physical thing being disturbed: a sheet of net with something pushed
+ * through it. The lowpass sweeping upward as it opens is the giveaway, because
+ * that is what a net does as the ball pushes the mesh aside.
+ *
+ * `at` exists for the same reason `playPop`'s does: so it can be scheduled on
+ * the audio clock rather than from a timer.
+ */
+export function playNet(at?: number) {
+  const audio = getAudioContext();
+  if (!audio) return;
+
+  const now = at ?? audio.currentTime;
+  const seconds = 0.5;
+  const frames = Math.floor(audio.sampleRate * seconds);
+  const buffer = audio.createBuffer(1, frames, audio.sampleRate);
+  const channel = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i += 1) {
+    channel[i] = (Math.random() * 2 - 1) * (1 - i / frames) ** 2;
+  }
+
+  const rustle = audio.createBufferSource();
+  rustle.buffer = buffer;
+
+  const sweep = audio.createBiquadFilter();
+  sweep.type = "lowpass";
+  // Upward, not downward: a net resists and then gives.
+  sweep.frequency.setValueAtTime(700, now);
+  sweep.frequency.linearRampToValueAtTime(2600, now + seconds * 0.8);
+  sweep.Q.value = 0.7;
+
+  const gain = audio.createGain();
+  // A short dip before the swell, so it lands on the hit rather than under it.
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.32, now + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
+
+  rustle.connect(sweep).connect(gain).connect(audio.destination);
+  rustle.start(now);
+}

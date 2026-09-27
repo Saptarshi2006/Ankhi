@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { beats } from "@/content/years";
+import { funTargets } from "@/content/fun";
 import { site } from "@/content/site";
 import { music, SLOT, SLOT_FOR_BEAT, TARGET_LUFS, TARGET_PEAK } from "@/content/music";
 import { STAGE } from "@/lib/stage-ranges";
@@ -1487,4 +1488,198 @@ test("every quadrant image loads, and carries real alt text", async ({ page }) =
 
   const noAlt = rendered.filter((r) => !r.alt.trim() || r.alt.startsWith("PLACEHOLDER"));
   expect(noAlt.map((r) => `${r.src}: "${r.alt}"`), "real alt text on every photo").toEqual([]);
+});
+
+/* ------------------------------------------------------------------ the fun page */
+
+test.describe("the fun page", () => {
+  /** Drags the ball from the spot onto a target, the way a reader does. */
+  async function dragOnto(page: Page, targetId: string) {
+    const goal = await page.locator(`[data-target="${targetId}"]`).boundingBox();
+    const ball = await page.locator("[data-ball]").boundingBox();
+    expect(goal, `target ${targetId} is on the net`).not.toBeNull();
+    expect(ball, "the ball is on the spot").not.toBeNull();
+    await page.mouse.move(ball!.x + ball!.width / 2, ball!.y + ball!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(goal!.x + goal!.width / 2, goal!.y + goal!.height / 2, { steps: 20 });
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+  }
+
+  test("the gate after the letter is a real link, and holding it goes", async ({ page }) => {
+    await page.goto("/");
+    const gate = page.locator("[data-fun-gate]");
+    await expect(gate).toHaveCount(1);
+    // A real href, not a div with a handler: without JavaScript this still goes
+    // to the right place, and a screen reader calls it a link.
+    expect(await gate.getAttribute("href")).toBe("/fun/");
+    // Below the letter, which is the peak — the offer comes after it, not in it.
+    const order = await page.evaluate(() => {
+      const y = (sel: string) => document.querySelector(sel)?.getBoundingClientRect().top ?? 0;
+      return { letter: y("section p"), gate: y("[data-fun-gate]") };
+    });
+    expect(order.gate, "the gate follows the letter").toBeGreaterThan(order.letter);
+
+    // Held for less than the threshold: nothing happens.
+    await gate.scrollIntoViewIfNeeded();
+    const box = (await gate.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(200);
+    expect(
+      Number(await gate.getAttribute("data-progress")),
+      "a short press does not fill the ring",
+    ).toBeLessThan(0.9);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    expect(new URL(page.url()).pathname, "a short press does not navigate").toBe("/");
+
+    // Held past it: it goes.
+    await page.mouse.down();
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 5000 })
+      .toBe("/fun/");
+    await page.mouse.up();
+  });
+
+  test("the gate is reachable and activatable from the keyboard", async ({ page }) => {
+    await page.goto("/");
+    const gate = page.locator("[data-fun-gate]");
+    await gate.scrollIntoViewIfNeeded();
+    await gate.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 5000 }).toBe("/fun/");
+  });
+
+  test("seven targets, a ball on the spot, and a way back at the end", async ({ page }) => {
+    await page.goto("/fun/");
+    await page.waitForSelector("[data-fun-pitch]");
+
+    expect(await page.locator("[data-target]").count()).toBe(funTargets.length);
+    expect(funTargets.length, "seven targets, seven pieces of media").toBe(7);
+    expect(await page.locator("[data-ball]").count()).toBe(1);
+    expect(await page.locator("[data-fun-done]").count(), "no way back until the end").toBe(0);
+    expect(await page.locator("[data-fun-viewer]").count()).toBe(0);
+
+    // The ground starts where the posts end, or the ball sits outside the area.
+    const joined = await page.evaluate(() => {
+      const g = document.querySelector("[data-fun-goal]")!.getBoundingClientRect();
+      const d = document.querySelector("[data-fun-ground]")!.getBoundingClientRect();
+      return Math.abs(g.bottom - d.top);
+    });
+    expect(joined, "the ground meets the posts").toBeLessThanOrEqual(2);
+
+    // And the ball is inside the penalty area.
+    const inside = await page.evaluate(() => {
+      const b = document.querySelector("[data-ball]")!.getBoundingClientRect();
+      const p = document.querySelector("[data-fun-box]")!.getBoundingClientRect();
+      const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      return c.x > p.left && c.x < p.right && c.y > p.top && c.y < p.bottom;
+    });
+    expect(inside, "the ball is on the penalty spot, inside the area").toBe(true);
+
+    for (const target of funTargets) {
+      await dragOnto(page, target.id);
+      expect(await page.locator("[data-fun-viewer]").count(), `${target.id} opened`).toBe(1);
+      await page.locator("[data-fun-close]").click();
+      await page.waitForTimeout(250);
+    }
+
+    expect(await page.locator("[data-target]").count(), "every target is gone").toBe(0);
+    const done = page.locator("[data-fun-done]");
+    await expect(done).toHaveCount(1);
+    await expect(page.locator("[data-fun-done] a")).toHaveAttribute("href", "/");
+  });
+
+  test("a hit opens the media and the ball goes back to the spot", async ({ page }) => {
+    await page.goto("/fun/");
+    await page.waitForSelector("[data-fun-pitch]");
+    const spot = (await page.locator("[data-ball]").boundingBox())!;
+
+    for (const id of ["t1", "t2", "t5"]) {
+      await dragOnto(page, id);
+      await expect(page.locator("[data-fun-viewer]")).toHaveCount(1);
+      const during = (await page.locator("[data-ball]").boundingBox())!;
+      expect(Math.abs(during.y - spot.y), `${id}: the ball is back while the media is up`).toBeLessThanOrEqual(1);
+      await page.locator("[data-fun-close]").click();
+      await page.waitForTimeout(250);
+      const after = (await page.locator("[data-ball]").boundingBox())!;
+      expect(Math.abs(after.x - spot.x), `${id}: the ball is back on the spot`).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - spot.y), `${id}: the ball is back on the spot`).toBeLessThanOrEqual(1);
+    }
+    expect(await page.locator("[data-target]").count(), "three targets gone").toBe(4);
+  });
+
+  test("a drag that misses changes nothing", async ({ page }) => {
+    await page.goto("/fun/");
+    await page.waitForSelector("[data-fun-pitch]");
+    const ball = (await page.locator("[data-ball]").boundingBox())!;
+    await page.mouse.move(ball.x + ball.width / 2, ball.y + ball.height / 2);
+    await page.mouse.down();
+    // Empty sky, well clear of the net.
+    await page.mouse.move(ball.x + ball.width / 2 + 4, 12, { steps: 20 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    expect(await page.locator("[data-target]").count(), "no target was hit").toBe(7);
+    expect(await page.locator("[data-fun-viewer]").count(), "and nothing opened").toBe(0);
+  });
+
+  test("every target can be opened without a mouse", async ({ page }) => {
+    await page.goto("/fun/");
+    await page.waitForSelector("[data-fun-pitch]");
+    // A drag-only game is a game half the readers cannot play.
+    await page.locator('[data-target="t3"]').focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-fun-viewer]")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-fun-viewer]")).toHaveCount(0);
+  });
+
+  test("the media behind the targets is real, and the videos are muted", async ({ page }) => {
+    const bad: string[] = [];
+    page.on("response", (r) => {
+      if ((r.url().includes("/photos/") || r.url().includes("/videos/")) && !r.ok()) {
+        bad.push(`${r.status()} ${r.url()}`);
+      }
+    });
+    await page.goto("/fun/");
+    await page.waitForSelector("[data-fun-pitch]");
+
+    for (const target of funTargets) {
+      await page.locator(`[data-target="${target.id}"]`).click();
+      const dialog = page.locator("[data-fun-viewer]");
+      await expect(dialog).toHaveCount(1);
+      // Every target says what it is, to anyone who cannot see it.
+      const label = (await dialog.getAttribute("aria-label")) ?? "";
+      expect(label.length, `${target.id} is described`).toBeGreaterThan(20);
+      expect(label.startsWith("PLACEHOLDER"), `${target.id} is not a placeholder`).toBe(false);
+
+      if (target.kind === "video") {
+        const video = page.locator("[data-fun-video]");
+        await expect(video).toHaveCount(1);
+        // Deliberately silent, with no unmute control anywhere.
+        expect(await video.evaluate((v: HTMLVideoElement) => v.muted), `${target.id} is muted`).toBe(true);
+        expect(await video.getAttribute("poster"), `${target.id} has a poster`).toContain(".jpg");
+        const box = (await video.boundingBox())!;
+        expect(box.width, `${target.id} is fitted to the frame, not cropped`).toBeLessThan(901);
+      } else {
+        await expect(page.locator("[data-fun-image]")).toHaveCount(1);
+        const alt = (await page.locator("[data-fun-image]").getAttribute("alt")) ?? "";
+        expect(alt.length, `${target.id} image has alt text`).toBeGreaterThan(20);
+        expect(alt.startsWith("PLACEHOLDER"), `${target.id} alt is not a placeholder`).toBe(false);
+      }
+
+      await page.locator("[data-fun-close]").click();
+      await page.waitForTimeout(200);
+    }
+
+    expect(bad, "no fun media request failed").toEqual([]);
+  });
+
+  test("the fun page is in the export", () => {
+    const html = readFileSync(join(process.cwd(), "out", "fun", "index.html"), "utf8");
+    expect(html, "the fun page is prerendered").toContain("data-fun-pitch");
+    // `trailingSlash: true`, so the directory form is what Workers serves.
+    expect(html).toContain("Seven, Ankhi");
+  });
 });

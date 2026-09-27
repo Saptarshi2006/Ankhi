@@ -12,6 +12,7 @@ import { STAGE, TITLE_SETTLED_VH } from "@/lib/stage-ranges";
 import Signature from "@/components/Signature";
 import SoundToggle from "@/components/SoundToggle";
 import Timeline from "@/components/timeline/Timeline";
+import FunGate from "@/components/FunGate";
 import Burst from "./Burst";
 import IntroStage from "./IntroStage";
 import Letter from "./Letter";
@@ -303,9 +304,16 @@ export default function Intro() {
         is the emotional peak; putting a lifetime of backstory after it would
         undercut it, and ending on "I don't just love having you in my life"
         with nothing following is the strongest possible close.
+
+        Which is why the one thing that does follow is not another beat, or more
+        letter, or a sign-off. It is a small quiet offer, set well below the last
+        line, that opens something with no weight on it. A gate in the middle of
+        the letter would have been the distraction; down here it is the last
+        thing you can do rather than something you have to get through.
       */}
       <Timeline />
       <Letter />
+      <FunGate />
     </>
   );
 }
