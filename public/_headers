@@ -35,3 +35,8 @@
 # — change those and this cache is stale for thirty days.
 /audio/*
   Cache-Control: public, max-age=2592000
+
+# Which slots the encoder actually produced. The score reads this before asking
+# for anything, so a build with no music in it requests nothing and logs no 404s.
+/audio/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate

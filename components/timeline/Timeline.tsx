@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { beats } from "@/content/years";
+import { SLOT_FOR_BEAT } from "@/content/music";
+import { getScore, BEAT_CROSSFADE } from "@/lib/music";
 import {
   SCREENS_PER_BEAT,
   STAGES,
@@ -46,6 +48,48 @@ gsap.registerPlugin(ScrollTrigger);
 export default function Timeline() {
   const sectionRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * One track per beat, crossfading as each year arrives.
+   *
+   * The track holds still for a whole beat while the scene plays, so the change
+   * happens during the *next* beat's travel, while the previous one is still on
+   * screen. The reader is never silent between years and never hears a cut.
+   *
+   * The next beat's slot is preloaded as soon as the current one starts. A beat
+   * is thirty to forty seconds of reading, which is far more than a few hundred
+   * kilobytes takes, so by the time the crossfade is due the next slot is
+   * decoded and the fade is instant.
+   */
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const beatAt = (progress: number) =>
+      Math.min(beats.length - 1, Math.max(0, Math.floor(progress * beats.length)));
+
+    let current: number | null = null;
+
+    const trigger = ScrollTrigger.create({
+      trigger: section,
+      start: () => sectionRange(section).start,
+      end: () => sectionRange(section).end,
+      scrub: true,
+      invalidateOnRefresh: true,
+      onUpdate: (self) => {
+        const score = getScore();
+        if (!score) return;
+        const beat = beatAt(self.progress);
+        if (beat === current) return;
+        current = beat;
+        score.crossfade(SLOT_FOR_BEAT[beat], BEAT_CROSSFADE);
+        const next = SLOT_FOR_BEAT[beat + 1];
+        if (next) score.preload(next);
+      },
+    });
+
+    return () => trigger.kill();
+  }, []);
 
   useGSAP(
     () => {

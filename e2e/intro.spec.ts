@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { beats } from "@/content/years";
 import { site } from "@/content/site";
+import { music, SLOT, SLOT_FOR_BEAT, TARGET_LUFS, TARGET_PEAK } from "@/content/music";
 import { STAGE } from "@/lib/stage-ranges";
 
 /** Touch devices have no wheel to drive. */
@@ -1065,86 +1066,48 @@ const seen = (page: Page, beat: number) =>
     expect(s.text).toContain(String(site.spanTo));
   });
 
-  test("the crowd only starts on a gesture, then swells with the balloon", async ({ page }) => {
+  test("nothing is fetched until the reader touches something", async ({ page }) => {
     test.slow();
     await page.addInitScript(() => {
       const w = window as unknown as Record<string, unknown>;
-      const audio = { fetches: [] as string[], decoded: [] as number[], gains: [] as AudioNode[] };
+      const audio = { requests: [] as string[] };
       (w as Record<string, unknown>).__audio = audio;
-      const Real = window.AudioContext;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).AudioContext = class extends Real {
-        constructor(...args: unknown[]) {
-          // @ts-expect-error spreading into a constructor
-          super(...args);
-          const createGain = this.createGain.bind(this);
-          this.createGain = () => {
-            const g = createGain();
-            audio.gains.push(g);
-            return g;
-          };
-          const decode = this.decodeAudioData.bind(this);
-          this.decodeAudioData = async (data: ArrayBuffer) => {
-            const buffer = await decode(data);
-            audio.decoded.push(buffer.duration);
-            return buffer;
-          };
-        }
-      };
       const fetchImpl = window.fetch.bind(window);
       window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).includes("/audio/")) audio.fetches.push(String(input));
+        if (String(input).includes("/audio/")) audio.requests.push(String(input));
         return fetchImpl(input, init);
       };
     });
 
     await page.goto("/");
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(900);
 
-    // Scrolling is not a gesture. Nothing may load. Kept well short of the
-    // point the balloon arms, because the tap below would then pop it — and a
-    // popped balloon silences the crowd four seconds later, which is a
-    // perfectly good behaviour and makes for a baffling test.
+    const asked = () =>
+      page.evaluate(() => (window as never as { __audio: { requests: string[] } }).__audio.requests);
+
+    /*
+     * Scrolling is not a gesture and must not fetch anything. The balloon grows
+     * on scroll alone, so this is the window in which a naive implementation
+     * would start downloading the score.
+     */
     await scrollBy(page, 300, 3);
-    expect(
-      await page.evaluate(() => (window as never as { __audio: { fetches: string[] } }).__audio.fetches),
-    ).toHaveLength(0);
+    expect(await asked(), "scrolling started an audio request").toHaveLength(0);
 
-    // One tap unlocks it. Tapped in the middle of the viewport rather than at a
-    // fixed coordinate, so it lands on a phone too.
+    // One tap unlocks it. Kept short of the arming point, because a tap after
+    // the balloon is armed pops it, and a popped balloon is a different test.
     const box = page.viewportSize()!;
     await page.mouse.click(Math.round(box.width / 2), Math.round(box.height * 0.6));
+    await expect.poll(async () => (await asked()).length, { timeout: 8000 }).toBeGreaterThan(0);
+
+    /*
+     * After the gesture it reads the manifest, and asks only for slots the
+     * encoder actually produced. With no music in the project that is the
+     * manifest and nothing else — no 404s, which is the whole point of
+     * publishing it.
+     */
     await expect
-      .poll(
-        async () =>
-          (await page.evaluate(() => (window as never as { __audio: { fetches: string[] } }).__audio.fetches))
-            .length,
-        { timeout: 10_000 },
-      )
-      .toBe(2);
-
-    // Both beds decoded, and the loop is the length the encoder built.
-    const decoded = await page.evaluate(
-      () => (window as never as { __audio: { decoded: number[] } }).__audio.decoded,
-    );
-    expect(decoded).toHaveLength(2);
-    for (const d of decoded) expect(d).toBeCloseTo(16, 1);
-
-    // The swell: louder *and* brighter, which is what makes it read as a room
-    // filling rather than a volume knob turning.
-    const level = () =>
-      page.evaluate(() => {
-        const g = (window as never as { __audio: { gains: GainNode[] } }).__audio.gains[0];
-        return g ? Number(g.gain.value.toFixed(3)) : 0;
-      });
-
-    const early = await level();
-    await growUntilArmed(page);
-    await page.waitForTimeout(500);
-    const late = await level();
-
-    expect(late).toBeGreaterThan(early + 0.2);
-    expect(late).toBeGreaterThan(0.5);
+      .poll(async () => (await asked()).every((u) => u.endsWith("/audio/manifest.json")))
+      .toBe(true);
   });
 
   test("only the final beat stays in full colour", async ({ page }) => {
@@ -1163,6 +1126,97 @@ const seen = (page: Page, beat: number) =>
     // one in a set of duotones.
     expect(duotoned.filter(Boolean)).toHaveLength(6);
     expect(duotoned.filter((f) => f === "none")).toHaveLength(1);
+  });
+
+  test.describe("the score", () => {
+    test("the manifest is internally valid", () => {
+      const slots = music.map((m) => m.slot);
+      expect(new Set(slots).size, "two slots share an id").toBe(slots.length);
+
+      for (const m of music) {
+        expect(m.file, `${m.slot} has no file`).toMatch(/^\d{2}-[a-z0-9-]+$/);
+        expect(m.inSec, `${m.slot} starts before zero`).toBeGreaterThanOrEqual(0);
+        expect(m.outSec, `${m.slot} is empty`).toBeGreaterThan(m.inSec);
+        // A window shorter than a musical phrase sounds like a mistake, and the
+        // encoder cannot tell the difference.
+        expect(m.outSec - m.inSec, `${m.slot} is too short to be a phrase`).toBeGreaterThanOrEqual(20);
+        if (m.gainDb !== undefined) expect(Math.abs(m.gainDb)).toBeLessThanOrEqual(12);
+      }
+
+      // Background music under a page of text should not be shouting.
+      expect(TARGET_LUFS).toBeLessThanOrEqual(-14);
+      expect(TARGET_LUFS).toBeGreaterThanOrEqual(-20);
+      expect(TARGET_PEAK).toBeLessThanOrEqual(-1);
+    });
+
+    test("every beat has its own track, and none is repeated", () => {
+      /*
+       * The thing that was asked for: all six years get their own music. This
+       * was nearly built with two beats sharing one recording, so it is
+       * asserted rather than assumed.
+       */
+      const perBeat = [...SLOT_FOR_BEAT];
+      expect(perBeat).toHaveLength(beats.length);
+      expect(new Set(perBeat).size, "two beats share a track").toBe(perBeat.length);
+
+      const declared = new Set(music.map((m) => m.slot));
+      for (const slot of perBeat) {
+        expect(declared.has(slot), `${slot} is played but never declared`).toBe(true);
+      }
+    });
+
+    test("the opening, the six beats and the handover are all covered", () => {
+      const declared = new Set(music.map((m) => m.slot));
+      // Slot one and the return bracket the pop.
+      expect(declared.has(SLOT.intro)).toBe(true);
+      expect(declared.has(SLOT.return)).toBe(true);
+      // The letter is deliberately not a slot of its own.
+      expect(SLOT_FOR_BEAT).toHaveLength(beats.length);
+      expect(declared.has(SLOT.letter)).toBe(false);
+
+      /*
+       * The nineteenth year runs on into the letter as a single take, so it has
+       * to be long enough for both — a beat is thirty to forty seconds, and the
+       * letter is a screen beyond that.
+       */
+      const last = music.find((m) => m.slot === SLOT_FOR_BEAT[5])!;
+      expect(last.outSec - last.inSec, "too short to span the beat and the letter")
+        .toBeGreaterThanOrEqual(80);
+    });
+  });
+
+  test("the site runs with no music present at all", async ({ page }) => {
+    /*
+     * The state the project is in right now: the manifest is declared and the
+     * engine is built, but `content/audio/music/` is empty, so every slot 404s.
+     * The site must still load, still pop, and not throw — the pop is the one
+     * sound that has to be right.
+     */
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message.slice(0, 160)));
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text().slice(0, 160));
+    });
+
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    // Straight through the timeline, past every beat, at each one's hero.
+    const hero = await stageIndex(page, 0, "hero");
+    for (let beat = 0; beat < beats.length; beat += 1) {
+      await jumpTo(page, await stageY(page, beat, hero, 0.8));
+    }
+
+    // The letter is still reachable and still readable.
+    const bottom = await page.evaluate(
+      () => document.documentElement.scrollHeight - window.innerHeight,
+    );
+    await jumpTo(page, bottom);
+    await expect(lines(page)).toHaveCount(12);
+
+    expect(errors, errors.join(" | ")).toHaveLength(0);
   });
 });
 

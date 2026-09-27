@@ -49,63 +49,99 @@ behave the same on a phone and a desktop. The track height in `globals.css`
 State lives in `components/intro/Intro.tsx` as
 `approach → armed → popping → settled`. Everything else takes props off that.
 
-### The crowd
+### The score
 
-From the balloon appearing through to "Happy 19th", with a silence in the
-middle. Three parts, all scheduled against the audio clock rather than with
-timers, so the gap is the length it claims to be:
+From the balloon appearing through to the letter, with a silence in the middle.
+Three events, all scheduled against the audio clock rather than with timers:
 
 ```
-crowd gain → 0 over 120ms  ──┐
-playPop at +130ms           ─┘
-crowd surges back over 900ms, landing as the title arrives
+slot 1 → 0 over 120ms
+playPop at +130ms
+slot 2 swells back over 900ms, landing as the title arrives
 ```
 
 A `setTimeout` between two audio events drifts by however long the main thread
-was busy, and a pop that lands early — on the crowd's tail — does not land.
+was busy, and a pop that lands early — on the music's tail — does not land at
+all. This is the reason everything takes absolute times rather than durations.
 
-Loudness **and** brightness both follow the balloon's growth, so it reads as a
-room filling up rather than a volume knob turning. Measured: gain 0.07 → 0.90
-while the lowpass opens 985Hz → 5197Hz.
+Slot one rides the balloon: its level follows the growth scrub, so it rises with
+the thing it is attached to. `track` rather than `ramp`, because it is driven
+every frame and a ramp restarted each frame would lag behind the balloon.
 
-**Two recordings, not one.** The pre-pop swell is a mid-level murmur; the return
-is a fuller crowd. Coming back out of the silence then reads as the room getting
-bigger rather than the same loop turned up.
+### The order
+
+Nine moments, eight tracks. **Beat 6 and the letter share one recording**, played
+straight through with no crossfade at all — "I will remain yours" is a promise
+and the letter is a promise, so the last thing heard as the site ends is the song
+that played for the nineteenth year.
+
+| # | moment | slot |
+|---|---|---|
+| 1 | balloon, 0 → 1.25vh | `intro` |
+| 2 | the pop's aftermath, 1.5 → 2.85vh | `return` |
+| 3–8 | the six beats, 2007 · 2012 · 2017 · 2020 · 2023 · 2026 | `beat-0` … `beat-5` |
+| — | the letter | *continues `beat-5`* |
+
+The track changes on a beat's **travel** stage, while the previous beat's scene
+is still on screen, so it is a crossfade and the reader is never silent between
+years.
+
+### The manifest
+
+`content/music.ts` is the only place a track is named: slot, file, in-point,
+out-point, gain. `encode-music.mjs` reads it to cut the files and `lib/music.ts`
+reads it to play them, so there is no second copy of these numbers.
+
+**How the windows were chosen.** Loudness envelope and percussive density,
+sampled per second, which reliably separates a verse from a chorus even on a
+heavily compressed master. The busiest sixty seconds of a pop track is almost
+always the last chorus, so most slots deliberately avoid it — slot one wants the
+*build* at the top of the track, not its climax.
+
+What those measurements cannot tell you is whether a window starts on a musical
+thought. If a slot sounds wrong, move `inSec` and rebuild: it is one number in
+one file.
+
+### Cutting them
+
+`npm run media:music`, four things, all because these are pop masters rather
+than something produced for this:
+
+1. **Trimmed** to the window. A beat is 30–40s of reading; shipping three-minute
+   tracks would be most of ten megabytes of music for no reason.
+2. **Faded** 1.5s at both ends, so a crossfade into a waveform that starts at
+   full scale cannot click.
+3. **Normalised** to −16 LUFS, peak −1.5 dBTP. These masters measure −7 to −9,
+   which is about six decibels above what music under a page of text should be.
+4. **Clamped** to the source's real duration, so a window that overruns a short
+   file ships a shorter clip instead of failing the build.
+
+It also clears anything in the output it did not produce. The output directory
+had 329KB of the retired crowd beds sitting in it — gitignored, so invisible in
+`git status`, and still shipping.
+
+### Loading, and loading nothing
+
+Slots are fetched and decoded on demand, and the next beat's is preloaded as the
+current one starts. A beat is 30–40s of reading, far more than a few hundred
+kilobytes takes.
+
+The encoder also publishes `public/audio/manifest.json` listing what it actually
+cut. The score reads that before asking for anything, so a project with no music
+in it requests **one** file and logs no 404s. Without it the site asked for all
+eight slots and logged a 404 for each on every visit, which makes a deliberately
+quiet site look broken.
 
 ### The one thing audio cannot do
 
 Browsers will not start audio from a scroll, and the first click in this design
-is the pop. So whether the pre-pop swell plays at all depends on the reader
-having touched something first — `lib/sound-unlock.ts` takes whichever gesture
-arrives first, and there is no gate in the UI.
+is the pop. So whether anything plays before the pop depends on the reader having
+touched something first — `lib/sound-unlock.ts` takes whichever gesture arrives
+first, and there is no gate in the UI.
 
 On a phone that is nearly always a tap. On a desktop, where the likeliest first
 interaction is a scroll that unlocks nothing, a reader whose only interaction is
-the pop click gets the silence and the pop, and the crowd for the title. That is
-a browser rule rather than a choice; if it turns out to matter, the fix is one
-small visible affordance before the balloon, not a change in `sound-unlock.ts`.
-
-Muted means no `AudioContext` is created at all, rather than one sitting silent.
-
-### The crowd audio itself
-
-Real recordings, not synthesis. A crowd is thousands of overlapping voices, and
-bandpassed noise gets you the shape of one but not the grain — and the grain is
-most of why a stadium sounds like a stadium. The pop stays synthesised, because
-a pop genuinely is two layers.
-
-- `scripts/fetch-audio.mjs` pulls two files from the USC Cinema / Sunset
-  Editorial collection on the Internet Archive, **CC0 1.0** — no attribution, no
-  restriction. Not committed; the fetch script is the record of where they came
-  from.
-- `scripts/encode-audio.mjs` cuts a steady segment from each (chosen by measuring
-  the RMS envelope, to stay off the tape's head and tail) and builds a seamless
-  loop by crossfading the tail into the head.
-- Mono AAC, 80kbps, 16s each: **165KB apiece, 329KB for both**, 9% of the page.
-
-The seams were checked rather than assumed — a hard cut on a diffuse crowd is a
-click every sixteen seconds. The largest sample-to-sample step at the wrap
-(1073, 1563) measures *below* the file's typical step (1302, 1427).
+the pop click gets the silence and the pop, and the music for the title.
 
 ## The timeline
 

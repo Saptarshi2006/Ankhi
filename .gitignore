@@ -51,8 +51,8 @@ next-env.d.ts
 /public/photos/
 /public/videos/
 
-# Crowd audio. Fetched from the Internet Archive by `npm run media:audio:fetch`
-# rather than committed — CC0, but 21MB of tape does not belong in history, and
-# the fetch script is the record of where it came from.
+# The score. Full-length commercial masters, far too large for history, and the
+# cut versions in public/audio/ are rebuilt from them by `npm run media:music`.
+# The windows live in content/music.ts.
 /content/audio/
 /public/audio/

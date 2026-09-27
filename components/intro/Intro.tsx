@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLenis } from "@/lib/smooth-scroll";
 import { useSoundEnabled } from "@/lib/sound-pref";
-import { Crowd, playPop } from "@/lib/sound";
+import { playPop } from "@/lib/sound";
+import { ensureScore, getScore, releaseScore, Score } from "@/lib/music";
+import { SLOT } from "@/content/music";
 import { useAudioUnlock } from "@/lib/sound-unlock";
 import { STAGE, TITLE_SETTLED_VH } from "@/lib/stage-ranges";
 import Signature from "@/components/Signature";
@@ -31,16 +33,16 @@ const SETTLE = 320;
 /**
  * The gap the pop sits in.
  *
- * `SILENCE` is how long the crowd takes to be gone; `POP_AFTER` is how much
+ * `SILENCE` is how long the music takes to be gone; `POP_AFTER` is how much
  * longer before the pop fires. Both are in seconds on the audio clock, and the
- * 10ms between them is deliberate — a pop at the exact instant the crowd hits
- * zero still has the crowd's tail in its ear.
+ * 10ms between them is deliberate — a pop at the exact instant the music hits
+ * zero still has its tail in its ear.
  */
 const SILENCE = 0.12;
 const POP_AFTER = 0.13;
 
-/** How long after the intro settles before the crowd lets the timeline have it. */
-const CROWD_FADE_AT = 4200;
+/** How long after the intro settles before the opening tracks are faded out. */
+const HANDOVER_AT = 4200;
 
 /**
  * How grown the balloon is, 0 to 1, straight from the scroll.
@@ -66,7 +68,7 @@ export default function Intro() {
   // capture a stale value from the render that created them.
   const phaseRef = useRef<Phase>("approach");
   const lockedRef = useRef(false);
-  const crowdRef = useRef<Crowd | null>(null);
+  const scoreRef = useRef<Score | null>(null);
 
   const setLocked = useCallback(
     (locked: boolean) => {
@@ -107,22 +109,29 @@ export default function Intro() {
     setBurstKey((key) => key + 1);
 
     /*
-     * The silence, then the pop inside it, then the crowd back.
+     * The silence, then the pop inside it, then the music back.
      *
      * All three are scheduled against the audio clock rather than with timers,
      * which is the only way to be sure the gap is the length it claims to be.
      * A `setTimeout` between two audio events drifts by however long the main
-     * thread was busy, and a pop that lands early — on the tail of the crowd —
+     * thread was busy, and a pop that lands early — on the tail of the music —
      * does not land at all.
      */
-    const crowd = crowdRef.current;
-    if (soundOn && crowd) {
-      // Gone by `silent`, the pop lands at `popAt`, and the crowd is handed
-      // back just after it — all three on the same clock.
-      const silent = crowd.silence(SILENCE);
+    const score = scoreRef.current;
+    if (soundOn && score) {
+      /*
+       * Gone by `silent`, the pop lands at `popAt`, and the next track is
+       * handed back just after it — all three on the same clock.
+       *
+       * `resume` is given an explicit `from` of 0 rather than reading the gain:
+       * at scheduling time the fade has not run yet, so the current value is
+       * still the loud one, and using it restarts the music at full level at the
+       * exact moment it was meant to return. That bug is why it is a parameter.
+       */
+      const silent = score.silence(SILENCE);
       const popAt = silent + POP_AFTER;
       playPop(popAt);
-      crowd.surge(popAt + 0.05, 0.85, 0.9);
+      score.resume(SLOT.return, popAt + 0.05, 0.9, 0.9, 0);
     } else if (soundOn) {
       playPop();
     }
@@ -150,49 +159,55 @@ export default function Intro() {
   }, [setLocked, soundOn, lenis]);
 
   /*
-   * Load the crowd, and unlock on the first gesture.
+   * Load the score, and unlock on the first gesture.
    *
    * Audio cannot start from a scroll, and the first click in this design is the
-   * pop — so whether the pre-pop swell ever plays depends on the reader
+   * pop — so whether anything plays before the pop depends on the reader
    * happening to touch something first. See `sound-unlock.ts` for what that
    * trade actually means.
    */
   const unlock = useCallback(() => {
     if (!soundOn) return;
-    void Crowd.load().then((crowd) => {
-      if (!crowd) return;
-      crowd.setMuted(false);
-      crowd.reset();
+    const score = ensureScore();
+    if (!score) return;
+
+    score.setMuted(false);
+    // Only the opening track is needed before the pop. The rest is fetched as
+    // each beat is approached, so the first paint is not carrying a megabyte of
+    // music it will not play for another minute.
+    void score.load(SLOT.intro).then((ok) => {
+      if (!ok) return;
       /*
-       * Catch the crowd up to wherever the balloon has already got to.
+       * Catch up to wherever the balloon has already got to.
        *
-       * Without this the swell is a one-way street: `onUpdate` only fires while
-       * the scroll is inside the growth range, so a reader whose audio finished
-       * loading after they had already scrolled past it — or who tapped late —
-       * got a crowd that stayed at zero for the rest of the intro. Measured:
-       * gain 0 before the pop and 0 after, having never once been non-zero.
+       * The swell is driven from a scroll trigger that only fires inside the
+       * growth range, so a reader who tapped late — or whose audio finished
+       * loading after they had already scrolled past it — would get a track
+       * that never started. Measured, on the crowd that this replaced: gain 0
+       * before the pop and 0 after, having never once been non-zero.
        */
-      crowd.setIntensity(growthProgress());
-      crowdRef.current = crowd;
+      score.play(SLOT.intro, { level: growthProgress() });
+      scoreRef.current = score;
     });
   }, [soundOn]);
 
   useAudioUnlock(unlock, soundOn);
 
-  useEffect(() => () => crowdRef.current?.dispose(), []);
+  useEffect(() => () => releaseScore(), []);
 
-  // Mute follows the preference, including mid-swelling.
+  // Mute follows the preference, including mid-track.
   useEffect(() => {
-    crowdRef.current?.setMuted(!soundOn);
+    scoreRef.current?.setMuted(!soundOn);
   }, [soundOn]);
 
   /*
-   * The swell.
+   * The swell: the opening track rises with the balloon.
    *
-   * Loudness *and* brightness both follow the balloon's growth, so it reads as a
-   * room filling up rather than a volume knob being turned. Past `growthEnd` it
-   * holds at full and stops following the scroll: from there the reader is on
-   * their own, and the prompt is what they are reading.
+   * `track` rather than `ramp`, because it is driven from the scroll every
+   * frame and a ramp restarted each frame would lag behind the balloon it is
+   * supposed to be attached to. Past `growthEnd` it holds at full and stops
+   * following: from there the reader is on their own and the prompt is what
+   * they are reading.
    */
   useEffect(() => {
     const stage = document.querySelector<HTMLElement>(".track-stage");
@@ -205,10 +220,10 @@ export default function Intro() {
       scrub: true,
       invalidateOnRefresh: true,
       onUpdate: () => {
-        const crowd = crowdRef.current;
-        if (!crowd) return;
+        const score = scoreRef.current;
+        if (!score) return;
         if (phaseRef.current === "popping" || phaseRef.current === "settled") return;
-        crowd.setIntensity(growthProgress());
+        score.track(SLOT.intro, growthProgress());
       },
     });
 
@@ -216,14 +231,21 @@ export default function Intro() {
   }, [soundOn]);
 
   /*
-   * Let the crowd go once the intro is behind us, so the timeline is quiet.
-   * Without this a stadium keeps murmuring under six years of somebody's life.
+   * Hand over to the timeline.
+   *
+   * The timeline's own beat tracker crossfades to the first beat's track, so
+   * there is nothing to do here beyond making sure the opening track is out of
+   * the way by the time the section starts. It is also the moment the rest of
+   * the score is worth fetching.
    */
   useEffect(() => {
     if (phase !== "settled") return;
     const id = window.setTimeout(() => {
-      crowdRef.current?.setIntensity(0);
-    }, CROWD_FADE_AT);
+      const score = scoreRef.current;
+      if (!score) return;
+      score.fadeOut(SLOT.intro, 1.2);
+      score.fadeOut(SLOT.return, 1.2);
+    }, HANDOVER_AT);
     return () => window.clearTimeout(id);
   }, [phase]);
 
