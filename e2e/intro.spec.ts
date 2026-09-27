@@ -546,11 +546,11 @@ const seen = (page: Page, beat: number) =>
     if (!slab) throw new Error(`no curtain for beat ${i}`);
     return {
       title: on("[data-s-title]"),
-      year: on("[data-s-year]"),
+      words: on("[data-s-words]"),
       turn: on("[data-s-turn]"),
       quads,
       hero: on("[data-hero]"),
-      yearText: scene.querySelector("[data-s-year]")?.textContent?.trim() ?? "",
+      turnText: scene.querySelector("[data-s-turn]")?.textContent?.trim() ?? "",
       curtainX: new DOMMatrixReadOnly(getComputedStyle(slab).transform).m41,
       curtainOpacity: Number.parseFloat(getComputedStyle(slab.parentElement!).opacity),
       takeovers: takeovers.map((el) => (el as HTMLElement).dataset.takeoverBeat ?? ""),
@@ -709,38 +709,143 @@ const seen = (page: Page, beat: number) =>
     const firstSeen: Record<string, number> = {};
     const samples = await walk(page, 1, 3400, 100);
     samples.forEach((s, step) => {
-      for (const key of ["title", "year", "turn", "hero"] as const) {
+      for (const key of ["title", "turn", "hero"] as const) {
         if (s[key] && firstSeen[key] === undefined) firstSeen[key] = step;
       }
       if (s.quads > 0 && firstSeen.quads === undefined) firstSeen.quads = step;
       if (s.takeovers.includes("1") && firstSeen.takeover === undefined) firstSeen.takeover = step;
     });
 
-    for (const key of ["title", "year", "turn", "quads", "hero", "takeover"]) {
+    for (const key of ["title", "turn", "quads", "hero", "takeover"]) {
       expect(firstSeen[key], `${key} never appeared`).toBeDefined();
     }
-    expect(firstSeen.title!).toBeLessThan(firstSeen.year!);
-    expect(firstSeen.year!).toBeLessThan(firstSeen.turn!);
+    expect(firstSeen.title!).toBeLessThan(firstSeen.turn!);
     expect(firstSeen.quads!).toBeLessThan(firstSeen.hero!);
     expect(firstSeen.hero!).toBeLessThan(firstSeen.takeover!);
   });
 
-  test("gives the year a stage to itself", async ({ page }) => {
+  test("the turn and her answer both get room, alone in the middle", async ({ page }) => {
     await enterTimeline(page);
-    await gotoStage(page, 1, 3, 0.75);
 
+    // Back half of the turn stage: mine has landed, hers is arriving.
+    await gotoStage(page, 1, 3, 0.8);
     const s = await seen(page, 1);
-    expect(s.year).toBe(true);
-    // Read from the content rather than hardcoded, so editing a beat's year
-    // does not fail a test about the year getting a stage to itself.
-    expect(s.yearText).toBe(String(beats[1].year));
-    // Nothing else on screen, and specifically no age range: the rail carries
-    // the ages continuously, and printing them here made the year a label.
+    expect(s.turn).toBe(true);
+    // Read from the content rather than hardcoded, so editing the copy does not
+    // fail a test about the copy being on screen.
+    expect(s.turnText).toBe(beats[1].turn);
+    // Her line is the thing this stage grew to hold, and it was declared in the
+    // data for five of the six beats and rendered by nothing at all until now.
+    expect(s.words, "her own words are on screen").toBe(true);
+    // Nothing else competing, so the two lines are actually readable.
     expect(s.title).toBe(false);
-    expect(s.turn).toBe(false);
     expect(s.quads).toBe(0);
     expect(s.hero).toBe(false);
     expect(s.takeovers).toHaveLength(0);
+  });
+
+  test("her words arrive after the turn, not beside it", async ({ page }) => {
+    await enterTimeline(page);
+    // Front of the stage: mine is up, hers has not started.
+    await gotoStage(page, 1, 3, 0.2);
+    const s = await seen(page, 1);
+    expect(s.turn).toBe(true);
+    expect(s.words, "her line waits for the second half").toBe(false);
+  });
+
+  test("no curtain ever stands over the frame it is not wiping", async ({ page }) => {
+    await enterTimeline(page);
+
+    /*
+     * A curtain that has not rendered sits at whatever CSS says, and a
+     * full-screen slab at `translateX(0)` is a full screen of ink at z-40. The
+     * first beat's curtain did exactly that, for the whole timeline, and nothing
+     * caught it: every other assertion in this file reads the opacity of
+     * something *underneath* the slab, and a curtain at full opacity is exactly
+     * as invisible to an opacity check as the absence of one.
+     *
+     * So this measures the slab's own rect against the middle of the frame.
+     */
+    for (const beat of [1, 2, 5]) {
+      for (const frac of [0.1, 0.35, 0.6, 0.8, 0.95]) {
+        await gotoStage(page, beat, 3, frac);
+        const over = await page.evaluate(() => {
+          const cx = innerWidth / 2;
+          const cy = innerHeight / 2;
+          const out: string[] = [];
+          for (const slab of document.querySelectorAll<HTMLElement>("[data-curtain-slab]")) {
+            // Visibility is what is painted, so it is the gate. A hidden slab
+            // may sit anywhere without being in the way.
+            const cs = getComputedStyle(slab);
+            if (cs.visibility === "hidden" || Number(cs.opacity) < 0.02) continue;
+            const r = slab.getBoundingClientRect();
+            if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+              out.push(slab.closest("[data-curtain-for]")?.getAttribute("data-curtain-for") ?? "?");
+            }
+          }
+          return out;
+        });
+        // Only this beat's own curtain and the one before it may be crossing.
+        const allowed = new Set([String(beat), String(beat - 1)]);
+        for (const who of over) {
+          expect(allowed.has(who), `curtain ${who} over the frame in beat ${beat} at ${frac}`).toBe(
+            true,
+          );
+        }
+      }
+    }
+  });
+
+  test("every beat publishes its own geometry, the first one included", async ({ page }) => {
+    await enterTimeline(page);
+    const published = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>("[data-scene]")].map((el) => ({
+        scene: el.dataset.scene,
+        start: Number(el.dataset.sceneStart),
+        end: Number(el.dataset.sceneEnd),
+        offsets: el.dataset.stageOffsets,
+        screens: el.dataset.stageScreens,
+      })),
+    );
+
+    // Beat 0 published nothing at all: no start, no end, no stage table. Its
+    // trigger never refreshed, so its timeline never rendered, and its curtain
+    // was left standing in the middle of the page for the entire timeline. It
+    // is the one beat whose geometry had never been asserted, which is why it
+    // went unnoticed.
+    for (const beat of published) {
+      expect(Number.isFinite(beat.start), `beat ${beat.scene} published a start`).toBe(true);
+      expect(Number.isFinite(beat.end), `beat ${beat.scene} published an end`).toBe(true);
+      expect(beat.offsets, `beat ${beat.scene} published its stage table`).toBeTruthy();
+      expect(beat.screens, `beat ${beat.scene} published its stage lengths`).toBeTruthy();
+      expect(beat.end - beat.start, `beat ${beat.scene} is one beat long`).toBeGreaterThan(1000);
+    }
+  });
+
+  test("no beat carries a year or an age any more", async ({ page }) => {
+    // The data, because that is where they would creep back from.
+    for (const beat of beats) {
+      expect(Object.keys(beat)).not.toContain("year");
+      expect(Object.keys(beat)).not.toContain("ageFrom");
+      expect(Object.keys(beat)).not.toContain("ageTo");
+      expect(beat.phase.length, `${beat.id} names itself`).toBeGreaterThan(0);
+      expect(beat.turn.length, `${beat.id} says something`).toBeGreaterThan(40);
+    }
+
+    // And the DOM, at both viewports, because a number can also be hardcoded
+    // into a component and a data check would never see it.
+    await enterTimeline(page);
+    const printed = await page.evaluate(() => {
+      const timeline = document.querySelector("[data-timeline]")!;
+      const text = timeline.textContent ?? "";
+      return {
+        // A four-digit year, anywhere in the timeline's own copy.
+        years: text.match(/\b(19|20)\d{2}\b/g) ?? [],
+        ages: text.match(/\b\d{1,2}\s*[–-]\s*\d{1,2}\b/g) ?? [],
+      };
+    });
+    expect(printed.years, "no year is printed anywhere in the timeline").toEqual([]);
+    expect(printed.ages, "no age range is printed anywhere in the timeline").toEqual([]);
   });
 
   test("the title surfaces, and nothing else is on screen while it does", async ({ page }) => {
@@ -749,36 +854,51 @@ const seen = (page: Page, beat: number) =>
 
     const s = await seen(page, 1);
     expect(s.title).toBe(true);
-    expect(s.yearText && s.year).toBe(false);
+    expect(s.words).toBe(false);
     expect(s.turn).toBe(false);
     expect(s.quads).toBe(0);
     expect(s.hero).toBe(false);
     expect(s.takeovers).toHaveLength(0);
   });
 
-  test("the curtain crosses the screen and never comes to rest", async ({ page }) => {
+  test("the curtain is on screen only while it is crossing", async ({ page }) => {
     test.slow();
     await enterTimeline(page);
 
     /*
-     * Sampled across the whole beat rather than across a guessed window: the
-     * ink is a third of a screen wide and moves fast, so a fixed sample rate
-     * either misses it or samples nothing else.
+     * Asserted on visibility rather than on where the slab's transform happens
+     * to be.
+     *
+     * The transform was never a reliable thing to measure: the slab is driven by
+     * a `paused` timeline, and across the beats its end values were not being
+     * applied — one beat's curtain was left sitting in the middle of the frame
+     * during a beat three scenes later. `visibility` is now set by the same
+     * timeline at the two ends of the sweep, and CSS defaults it to hidden, so
+     * the ink is on screen if and only if the sweep is running. That is the
+     * invariant a reader can actually see, and it is the one worth keeping.
      */
     const curtainIndex = await stageIndex(page, 1, "curtain");
     expect(curtainIndex, "the curtain stage is gone from the table").toBeGreaterThan(-1);
 
-    const before = await seen(page, 1);
-    await gotoStage(page, 1, curtainIndex, 0.5);
-    const during = await seen(page, 1);
-    await gotoStage(page, 1, curtainIndex + 1, 0.5);
-    const after = await seen(page, 1);
+    const shown = async () =>
+      page.evaluate(() => {
+        const slab = document.querySelector<HTMLElement>(
+          '[data-curtain-for="1"] [data-curtain-slab]',
+        )!;
+        return getComputedStyle(slab).visibility;
+      });
 
-    // Off to one side, then across, then off to the other: a crossing.
-    expect(before.curtainX).toBeLessThan(-during.vw * 0.4);
-    expect(after.curtainX).toBeGreaterThan(during.vw * 0.4);
-    // Mid-sweep it is genuinely in frame, not teleported past.
-    expect(Math.abs(during.curtainX)).toBeLessThan(during.vw * 0.7);
+    // Well before the wipe: nothing.
+    await gotoStage(page, 1, 0, 0.5);
+    expect(await shown(), "no ink before the wipe").toBe("hidden");
+
+    // Through it: ink.
+    await gotoStage(page, 1, curtainIndex, 0.5);
+    expect(await shown(), "ink while the curtain is crossing").toBe("visible");
+
+    // And afterwards, for the rest of the beat: nothing again.
+    await gotoStage(page, 1, curtainIndex + 2, 0.5);
+    expect(await shown(), "no ink after the wipe").toBe("hidden");
   });
 
   test("the four photographs fill the four corners, centre left clear", async ({ page }) => {
@@ -871,7 +991,7 @@ const seen = (page: Page, beat: number) =>
         vh: window.innerHeight,
         start: sc.dataset.sceneStart,
         title: layer("[data-s-title]"),
-        year: layer("[data-s-year]"),
+        words: layer("[data-s-words]"),
         turn: layer("[data-s-turn]"),
         hero: layer("[data-hero]"),
         takeovers: [...document.querySelectorAll("[data-takeover]")]
@@ -926,7 +1046,7 @@ const seen = (page: Page, beat: number) =>
   });
 
 
-  test("the rail's dot travels and lands on the age it is highlighting", async ({ page }) => {
+  test("the rail's dot travels and lands on the phase it is lighting", async ({ page }) => {
     await enterTimeline(page);
 
     /*
@@ -1019,17 +1139,21 @@ const seen = (page: Page, beat: number) =>
     }
   });
 
-  test("the six beats run 2007 to 2026", async () => {
-    expect(beats.map((b) => b.year)).toEqual([2007, 2012, 2017, 2020, 2023, 2026]);
+  test("the six beats, in order, each one named", async () => {
+    expect(beats.map((b) => b.phase)).toEqual([
+      "First steps",
+      "The Chair",
+      "The Change",
+      "The Quiet",
+      "Leaving",
+      "Now",
+    ]);
     // The last one is the year she turns nineteen, and the first is her first.
-    expect(beats.at(-1)!.year - beats.at(-1)!.ageTo).toBe(2007);
-    // Strictly increasing, so the rail's `key={beat.year}` stays unique.
-    for (let i = 1; i < beats.length; i += 1) {
-      expect(beats[i].year).toBeGreaterThan(beats[i - 1].year);
-    }
+    // Unique ids, so the rail's `key={beat.id}` cannot collide.
+    expect(new Set(beats.map((b) => b.id)).size).toBe(beats.length);
   });
 
-  test("the words clear, and the years then bloom in out of a blur", async ({ page }) => {
+  test("the words clear, and the line then blooms in out of a blur", async ({ page }) => {
     await page.goto("/");
     // `scrollBy`, not `page.mouse.wheel`: there is no wheel in mobile WebKit.
     await growUntilArmed(page);
@@ -1039,10 +1163,10 @@ const seen = (page: Page, beat: number) =>
     // `page.evaluate` runs in the page, so the constant has to be passed in
     // rather than closed over — referencing the import directly throws there.
     const read = () =>
-      page.evaluate((from: number) => {
+      page.evaluate((from: string) => {
         const words = document.querySelectorAll<HTMLElement>("h1 span")[0];
         const line = [...document.querySelectorAll<HTMLElement>("p")].find((el) =>
-          (el.textContent ?? "").includes(String(from)),
+          (el.textContent ?? "").includes(from),
         );
         return {
           words: Number.parseFloat(getComputedStyle(words).opacity),
@@ -1050,7 +1174,7 @@ const seen = (page: Page, beat: number) =>
           blur: line ? getComputedStyle(line).filter : "",
           text: line?.textContent?.replace(/\s+/g, " ").trim() ?? "",
         };
-      }, site.spanFrom);
+      }, site.spanLine);
 
     const vh = page.viewportSize()!.height;
 
@@ -1061,7 +1185,7 @@ const seen = (page: Page, beat: number) =>
     expect(s.words).toBeGreaterThan(0.8);
     expect(s.line).toBeLessThan(0.05);
 
-    // The words are fully gone before the years begin. This is not only
+    // The words are fully gone before the line begins. This is not only
     // compositional: at full spread the gap between them is 463px on a desktop
     // and 96px on a phone, so anything meant to sit between them is clipped on
     // the device this site is most likely read on.
@@ -1077,8 +1201,9 @@ const seen = (page: Page, beat: number) =>
     s = await read();
     expect(s.line).toBeGreaterThan(0.9);
     expect(s.blur).toBe("blur(0px)");
-    expect(s.text).toContain(String(site.spanFrom));
-    expect(s.text).toContain(String(site.spanTo));
+    expect(s.text).toBe(site.spanLine);
+    // And no date is left standing in its place.
+    expect(s.text).not.toMatch(/\d{4}/);
   });
 
   test("the photograph has the middle of the frame to itself", async ({ page }) => {
@@ -1088,18 +1213,18 @@ const seen = (page: Page, beat: number) =>
     await waitForScrollSettle(page);
 
     const read = () =>
-      page.evaluate((from: number) => {
+      page.evaluate((from: string) => {
         const words = document.querySelectorAll<HTMLElement>("h1 span")[0];
         const photo = document.querySelector<HTMLElement>("[data-intro-photo]");
         const line = [...document.querySelectorAll<HTMLElement>("p")].find((el) =>
-          (el.textContent ?? "").includes(String(from)),
+          (el.textContent ?? "").includes(from),
         );
         return {
           words: Number.parseFloat(getComputedStyle(words).opacity),
           photo: photo ? Number.parseFloat(getComputedStyle(photo).opacity) : -1,
           line: line ? Number.parseFloat(getComputedStyle(line).opacity) : 0,
         };
-      }, site.spanFrom);
+      }, site.spanLine);
 
     const vh = page.viewportSize()!.height;
 
@@ -1409,7 +1534,7 @@ test.describe("palette", () => {
       const ratio = contrastRatio(ink, hexFromOklch(beat.colour));
       expect(
         ratio,
-        `age ${beat.ageFrom}-${beat.ageTo} on ${hexFromOklch(beat.colour)}`,
+        `${beat.phase} on ${hexFromOklch(beat.colour)}`,
       ).toBeGreaterThanOrEqual(7);
     }
   });

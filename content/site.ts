@@ -4,11 +4,14 @@ export const site = {
   titleLeft: "Happy",
   titleRight: "19th",
   /**
-   * The span of the whole timeline, which is what blooms in after the title
-   * parts. One constant so the line and the six beats cannot disagree.
+   * What blooms in the middle of the intro, once the title has parted.
+   *
+   * This was `2007 — 2026`. The timeline carries no years and no ages any more,
+   * so a pair of dates in the one place the reader had left to orient themselves
+   * was the last thing keeping the site on a calendar. It is words instead, and
+   * it is the only line the intro says that the six beats do not.
    */
-  spanFrom: 2007,
-  spanTo: 2026,
+  spanLine: "six chapters, all of them you",
   /**
    * The two of them, in the slot the title vacates.
    *

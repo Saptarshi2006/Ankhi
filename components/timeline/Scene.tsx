@@ -58,7 +58,7 @@ export default function Scene({
       const slab = root
         .closest(".timeline-viewport")
         ?.querySelector<HTMLElement>(`[data-curtain-for="${index}"] [data-curtain-slab]`);
-      const year = q<HTMLElement>("[data-s-year]")[0];
+      const words = q<HTMLElement>("[data-s-words]")[0];
       const turn = q<HTMLElement>("[data-s-turn]")[0];
       // The media box, not the full-panel slot around it: this is both what
       // scales up out of the middle and what the takeover is handed as its
@@ -66,7 +66,17 @@ export default function Scene({
       const hero = q<HTMLElement>("[data-hero]")[0];
       const quads = q<HTMLElement>("[data-quad]");
 
-      if (!title || !slab || !year || !turn || !hero) return;
+      /*
+       * `words` is deliberately not in here.
+       *
+       * `herWords` is optional — five of the six beats have one, the first has
+       * none — so requiring the element makes this guard return early for that
+       * beat, which means no timeline at all: no stages, no curtain sweep, and
+       * the curtain left standing in the middle of the page for the rest of the
+       * site, because an unrendered slab has no transform and `translateX(0)`
+       * is dead centre. The first beat on the page rendered nothing.
+       */
+      if (!title || !slab || !turn || !hero) return;
 
       // Position within this beat, in screens. `stageOffset(0, n)` is the same
       // arithmetic with the beat index zeroed out.
@@ -97,9 +107,24 @@ export default function Scene({
        * that are always in the same place is three chances to desync.
        *
        * The title is dismissed a third of the way in, so it is fully covered
-       * before the slab starts to leave and the year is revealed.
+       * before the slab starts to leave and the turn is revealed.
        */
       const half = dur(STAGE.curtain) / 2;
+
+      /*
+       * Visible for the sweep and not one frame longer.
+       *
+       * `set` rather than a tween, on purpose. The curtain's resting state is
+       * `visibility: hidden` in CSS, and the only thing that can put it on
+       * screen is these two assignments — so the invariant "ink is only ever on
+       * screen while it is crossing" is structural rather than a thing that has
+       * to go on being true about where a tween happens to leave a transform.
+       */
+      tl.set(slab, { visibility: "visible" }, at(STAGE.curtain));
+      tl.set(slab.parentElement as HTMLElement, { visibility: "visible" }, at(STAGE.curtain));
+      tl.set(slab.parentElement as HTMLElement, { visibility: "hidden" }, at(STAGE.curtain) + half * 2);
+      tl.set(slab, { visibility: "hidden" }, at(STAGE.curtain) + half * 2);
+
       tl.to(title, { autoAlpha: 0, duration: half * 0.6, ease: "power1.in" }, at(STAGE.curtain));
       tl.fromTo(
         slab,
@@ -110,36 +135,43 @@ export default function Scene({
       tl.to(slab, { xPercent: 100, duration: half, ease: "power2.out" }, at(STAGE.curtain) + half);
 
       /*
-       * Stage 3 — the year, alone.
+       * Stage 3 — the turn, alone in the middle, and then her answering it.
        *
-       * The year only. The ages are deliberately not here: the rail already
-       * carries them continuously, and printing them under the year turned the
-       * moment into a label rather than a beat.
+       * One stage, two arrivals, because they are one thought: what I noticed,
+       * and what she said back. Her line lands after mine rather than beside it,
+       * so the eye has finished the first before the second starts — and because
+       * it is the last thing in the beat before the photographs, it is the line
+       * the reader is still looking at when they have to move on.
+       *
+       * The timings are back-loaded to leave a hold. The first version ran the
+       * turn over half the stage and her line over 45% of what was left, so the
+       * pair was only both-settled over the last 5% — about 4px of scroll. It
+       * was on screen and unreadable. Finishing by 70% leaves the last 30% of the
+       * stage, roughly a third of a screen, with both lines still and legible,
+       * which is the entire reason the stage grew.
+       *
+       * This is where the two year stages went. They were 0.55 screens spent
+       * printing a number and taking it away, and the beat is exactly as long as
+       * it was; the scroll is now spent on words instead.
        */
-      tl.fromTo(
-        year,
-        { autoAlpha: 0, scale: 0.82 },
-        { autoAlpha: 1, scale: 1, duration: dur(STAGE.year), ease: "power2.out" },
-        at(STAGE.curtain) + half,
-      );
-
-      /* Stage 4 — the year leaves sideways. */
-      tl.to(
-        year,
-        { xPercent: -24, autoAlpha: 0, duration: dur(STAGE.yearOut), ease: "power2.in" },
-        at(STAGE.yearOut),
-      );
-
-      /* Stage 5 — the turn, in the middle, with nothing else competing. */
+      const turnDur = dur(STAGE.turn);
       tl.fromTo(
         turn,
         { autoAlpha: 0, y: 22 },
-        { autoAlpha: 1, y: 0, duration: dur(STAGE.turn), ease: "power2.out" },
+        { autoAlpha: 1, y: 0, duration: turnDur * 0.35, ease: "power2.out" },
         at(STAGE.turn),
       );
+      if (words) {
+        tl.fromTo(
+          words,
+          { autoAlpha: 0, y: 16 },
+          { autoAlpha: 1, y: 0, duration: turnDur * 0.3, ease: "power2.out" },
+          at(STAGE.turn, turnDur * 0.4),
+        );
+      }
 
       /*
-       * Stage 6 — four photographs, two from the left and two from the right.
+       * Stage 4 — four photographs, two from the left and two from the right.
        *
        * The small stagger is what makes them read as arriving rather than
        * existing: perfectly simultaneous motion looks like a state change, and
@@ -169,7 +201,7 @@ export default function Scene({
       }
 
       /*
-       * Stage 7 — the hero pushes out of the middle.
+       * Stage 5 — the hero pushes out of the middle.
        *
        * The turn recedes rather than vanishing, and the photographs dim to a
        * third rather than leaving, so the frame still has depth behind the
@@ -181,17 +213,21 @@ export default function Scene({
         { autoAlpha: 1, scale: 1, duration: dur(STAGE.hero), ease: "power2.out" },
         at(STAGE.hero),
       );
-      tl.to(turn, { autoAlpha: 0, scale: 0.9, duration: dur(STAGE.hero) * 0.55 }, at(STAGE.hero));
+      tl.to(
+        words ? [turn, words] : turn,
+        { autoAlpha: 0, scale: 0.9, duration: dur(STAGE.hero) * 0.55 },
+        at(STAGE.hero),
+      );
       tl.to(quads, { autoAlpha: 0.3, scale: 0.94, duration: dur(STAGE.hero) }, at(STAGE.hero) + 0.08);
 
       /*
-       * Stage 8 — the takeover.
+       * Stage 6 — the takeover.
        *
        * The panel's own contents are cleared as the overlay arrives, so nothing
        * can show through its edges during the grow, and the panel underneath is
        * already empty when the overlay lifts.
        */
-      tl.to([turn, title, year], { autoAlpha: 0, duration: 0.08 }, at(STAGE.full));
+      tl.to([turn, title, ...(words ? [words] : [])], { autoAlpha: 0, duration: 0.08 }, at(STAGE.full));
       tl.to(quads, { autoAlpha: 0, scale: 0.9, duration: 0.16 }, at(STAGE.full));
 
       /*
@@ -284,28 +320,39 @@ export default function Scene({
       </div>
 
       {/*
-        Stage 3. Just the year. `will-change` is left off deliberately — the
-        transform is scrubbed for the whole timeline, and promoting it up front
-        costs a compositor layer per panel for a transform that is usually
-        sitting at identity.
-      */}
-      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-        <span
-          data-s-year
-          className="font-display text-[clamp(4rem,17vw,11rem)] leading-none tracking-[-0.03em] text-ink"
-        >
-          {beat.year}
-        </span>
-      </div>
+        Stage 3. The turn, and then her answer to it.
 
-      {/* Stage 5. The turn holds the middle while the photographs frame it. */}
-      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-[8vw]">
+        Wider and a step smaller than it was: the copy is three sentences now
+        rather than one, and at the old measure and size it wrapped into a wall
+        that filled the frame edge to edge and left the photographs nowhere to
+        land. 34ch is roughly where a line stops being a comfortable read and
+        starts being a list.
+
+        `will-change` is left off both — the transforms are scrubbed for the
+        whole timeline, and promoting them up front costs a compositor layer per
+        panel for a transform that is usually sitting at identity.
+      */}
+      <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-[clamp(0.9rem,2.4vh,1.6rem)] px-[8vw]">
         <p
           data-s-turn
-          className="max-w-[22ch] text-center font-body text-[clamp(1.15rem,3.1vw,2rem)] leading-snug text-ink"
+          className="max-w-[34ch] text-center font-body text-[clamp(1.05rem,2.5vw,1.6rem)] leading-[1.5] text-ink"
         >
           {beat.turn}
         </p>
+        {beat.herWords && (
+          /*
+            Her line, in her voice, set apart from mine. Italic and a size down
+            so it reads as a quotation rather than as a second paragraph of the
+            same thing — and the quotation marks are in the content, not added
+            here, so the string is the string wherever else it is used.
+          */
+          <p
+            data-s-words
+            className="max-w-[30ch] text-center font-body text-[clamp(0.95rem,2.1vw,1.25rem)] leading-[1.55] italic text-ink-muted"
+          >
+            {beat.herWords}
+          </p>
+        )}
       </div>
 
       <Quadrants photos={beat.photos} filter={filter} />
@@ -332,7 +379,7 @@ export default function Scene({
               loop
               playsInline
               preload="none"
-              aria-label={`Video from ${beat.year}`}
+              aria-label={`Video from ${beat.title}`}
             >
               <source src={`/videos/${clip.id}-480.mp4`} type="video/mp4" media="(max-width: 900px)" />
               <source src={`/videos/${clip.id}-720.mp4`} type="video/mp4" />

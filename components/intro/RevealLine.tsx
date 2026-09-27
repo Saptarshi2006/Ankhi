@@ -10,11 +10,11 @@ import { STAGE, at } from "@/lib/stage-ranges";
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * The years, blooming in after the title has parted.
+ * The line, blooming in after the title has parted.
  *
  * The last thing the intro says before the timeline takes over, and the thing
- * that ties the six beats together: 2007 to 2026, the whole span, arriving in
- * the space "Happy" and "19th" left behind.
+ * that ties the six beats together: one line arriving in the space "Happy" and
+ * "19th" left behind. It used to be the span of years, 2007 to 2026.
  *
  * "Blend" rather than "pop": the blur resolves to sharp as the scale opens and
  * the opacity comes up, all from the centre. A fade alone at this size reads as
@@ -85,9 +85,7 @@ export default function RevealLine() {
       className="pointer-events-none col-start-1 row-start-1 text-center font-display text-[clamp(1.1rem,3.4vw,2.3rem)] leading-none tracking-[0.16em] text-ink-muted"
       style={{ transformOrigin: "50% 50%" }}
     >
-      {site.spanFrom}
-      <span className="mx-[0.5em] opacity-60">—</span>
-      {site.spanTo}
+      {site.spanLine}
     </p>
   );
 }

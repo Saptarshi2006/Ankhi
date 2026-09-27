@@ -1,14 +1,27 @@
 /**
  * The six beats.
  *
- * COPY IS PLACEHOLDER. The wording demonstrates the shape and length of a beat
- * — one concrete detail, a turn, and her own voice where there is one — but
- * none of it is real. Replace the strings; the layout does not change.
+ * NO YEARS, NO AGES. Both were here and both are gone: the rail used to carry
+ * `0–4`, `5–9` and so on, and one whole stage per beat printed a four-digit
+ * number alone on screen. A life is not a set of intervals, and reading her
+ * childhood as a spreadsheet is the opposite of what this page is for. What is
+ * left is a name and a paragraph, which is what a chapter actually is.
+ *
+ * `phase` is the short form — it has to survive a six-column rail on a phone.
+ * `title` is the long one, on the panel. Two names for one beat on purpose: a
+ * chapter marker in the margin, a title on the page.
  *
  * COLOURS ARE REAL and form a deliberate journey: hue travels cool to warm and
  * lands on the same rose the intro and the letter use, so the page's colour
  * arc resolves exactly where the love letter arrives. Lightness stays high
  * throughout, which is why one ink colour serves the whole timeline.
+ *
+ * The copy is written in the letter's voice, deliberately: second person, "I"
+ * and "you" in the same line, short declaratives, every turn ending on something
+ * concrete rather than on an aphorism. The letter is the thing this site is
+ * for, and six panels of greeting-card sentiment in front of it would spend the
+ * reader's patience before it arrived. `herWords` is the counterweight — terse,
+ * slightly defensive, in her voice, and not to be improved.
  *
  * MEDIA IS REFERENCED, NOT EMBEDDED. Files live in `content/media/` and are
  * named by convention, so real assets drop in without touching this file:
@@ -43,6 +56,13 @@ export type Photo = {
 export type Clip = {
   /** Base name in content/media, without extension. */
   id: string;
+  /**
+   * What is happening in it, for anyone who cannot see it.
+   *
+   * The hero is `aria-hidden` and the four corner photographs are decorative,
+   * so this is the only description of the clip that reaches assistive tech.
+   */
+  alt: string;
   /** Where the interesting part starts. */
   startSec: number;
   /** Where it ends. Keep the span short. */
@@ -50,16 +70,13 @@ export type Clip = {
 };
 
 export type Beat = {
-  /** Inclusive age range this beat covers. */
-  ageFrom: number;
-  ageTo: number;
-  /**
-   * The year this beat's age band began, so the six run 2007 → 2026 and the
-   * last one lands exactly on the year she turned nineteen.
-   */
-  year: number;
+  /** Stable identity, and the React key. Was `year`, before years went. */
+  id: string;
+  /** Short name for the rail. Has to fit a sixth of a phone's width. */
+  phase: string;
+  /** The name on the panel. */
   title: string;
-  /** One sentence: what changed. This is the beat, not the title. */
+  /** What changed, in the letter's voice. This is the beat, not the title. */
   turn: string;
   /** Her own words, if there are any worth keeping. */
   herWords?: string;
@@ -77,11 +94,10 @@ export type Beat = {
 
 export const beats: readonly Beat[] = [
   {
-    ageFrom: 0,
-    ageTo: 4,
-    year: 2007,
+    id: "b1",
+    phase: "First steps",
     title: "Before There Were Words",
-    turn: "You were entirely a person before you were entirely yourself.",
+    turn: "You were a person long before you were yourself. That has always been the easiest thing about you — you filled a room long before anyone told you what rooms were for. I have been trying to fill one ever since.",
     colour: "oklch(0.965 0.016 245)",
     photos: [
       { id: "y1-a", alt: "a baby in red and gold festival dress, a hand under her chin", width: 1200, height: 1776 },
@@ -89,14 +105,15 @@ export const beats: readonly Beat[] = [
       { id: "y1-c", alt: "a girl in a blue and gold silk sari beside an older woman in a multicoloured sari, both standing in a doorway packed with flower garlands", width: 1200, height: 1362 },
       { id: "y1-d", alt: "a young woman in a patterned knit sweater and jeans, sitting on steps beside a lake with sunglasses on her head", width: 1200, height: 1368 },
     ],
-    clip: { id: "y1-v", startSec: 0, endSec: 8 },
+    // The source is 6.3s, so the window is the whole thing. Declaring 8
+    // would not fail — ffmpeg would hand back 6.3s and nobody would know.
+    clip: { id: "y1-v", alt: "a PLACEHOLDER clip from the first years", startSec: 0, endSec: 6 },
   },
   {
-    ageFrom: 5,
-    ageTo: 9,
-    year: 2012,
+    id: "b2",
+    phase: "The Chair",
     title: "The Chair by the Window",
-    turn: "You decided where you sat, and nobody moved you.",
+    turn: "You decided where you sat and the whole room rearranged itself around you. I have never met anyone who takes up exactly as much space as she is entitled to, and then some. I sat where you told me to. I have not moved since.",
     herWords: "I'm not coming in.",
     colour: "oklch(0.955 0.030 205)",
     photos: [
@@ -105,14 +122,13 @@ export const beats: readonly Beat[] = [
       { id: "y2-c", alt: "a young woman in a yellow sari and red blouse wearing round sunglasses, both hands in her hair on a sunlit rooftop", width: 1200, height: 1600 },
       { id: "y2-d", alt: "a young woman holding a bunch of sunflowers on a balcony above a river, laughing downward at sunset", width: 1200, height: 1600 },
     ],
-    clip: { id: "y2-v", startSec: 0, endSec: 8 },
+    clip: { id: "y2-v", alt: "a PLACEHOLDER clip from the chair by the window", startSec: 0, endSec: 8 },
   },
   {
-    ageFrom: 10,
-    ageTo: 12,
-    year: 2017,
+    id: "b3",
+    phase: "The Change",
     title: "The Year That Changed",
-    turn: "Something happened that I still don't know the whole shape of.",
+    turn: "Something happened that I still do not have the whole shape of. You came out of it quieter, and I have never once asked you to be louder. You do not owe anyone an explanation of your own weather.",
     herWords: "It's fine. Everything's fine.",
     colour: "oklch(0.950 0.042 160)",
     photos: [
@@ -121,14 +137,13 @@ export const beats: readonly Beat[] = [
       { id: "y3-c", alt: "a young woman in a white printed top with her head tilted, silver jhumka earrings and a small nose ring", width: 1200, height: 1600 },
       { id: "y3-d", alt: "a young woman in a red sari with a gold ear cuff, looking straight into the camera", width: 1200, height: 1600 },
     ],
-    clip: { id: "y3-v", startSec: 0, endSec: 8 },
+    clip: { id: "y3-v", alt: "a PLACEHOLDER clip from the year that changed", startSec: 0, endSec: 8 },
   },
   {
-    ageFrom: 13,
-    ageTo: 15,
-    year: 2020,
+    id: "b4",
+    phase: "The Quiet",
     title: "The Year You Stopped Explaining",
-    turn: "You stopped telling people why you felt things, and started just feeling them.",
+    turn: "You stopped explaining yourself, and I noticed before you did. It is the most attractive thing about you — not the sari, not the earrings, the absolute refusal to justify being who you are.",
     herWords: "You don't get it. You never get it.",
     colour: "oklch(0.950 0.045 100)",
     photos: [
@@ -137,14 +152,14 @@ export const beats: readonly Beat[] = [
       { id: "y4-c", alt: "a woman in a cream and pink sari seated on stone steps against ochre-yellow walls, one hand lifted to her hair", width: 1200, height: 1595 },
       { id: "y4-d", alt: "a woman in a dark green sari on a wide lawn with a domed white monument far behind her, holding sunglasses and looking down", width: 1200, height: 1595 },
     ],
-    clip: { id: "y4-v", startSec: 0, endSec: 8 },
+    // 6.3s source; used whole for the same reason as y1.
+    clip: { id: "y4-v", alt: "a PLACEHOLDER clip from the year you stopped explaining", startSec: 0, endSec: 6 },
   },
   {
-    ageFrom: 16,
-    ageTo: 18,
-    year: 2023,
+    id: "b5",
+    phase: "Leaving",
     title: "Almost",
-    turn: "Everyone had an opinion about who you were becoming, and you stopped asking them.",
+    turn: "You were nearly gone from that building, and everything in it rearranged itself. I watched you carry a whole year on your back and pretend it weighed nothing. I wanted in. You would not let me.",
     herWords: "I've got it handled.",
     colour: "oklch(0.945 0.050 55)",
     photos: [
@@ -153,14 +168,15 @@ export const beats: readonly Beat[] = [
       { id: "y5-c", alt: "a woman in a cream sari and red blouse with gold jhumkas and red bangles, seated indoors with a hand at her hair", width: 1200, height: 2133 },
       { id: "y5-d", alt: "a woman in a cream and peach sari standing before a large green carved door in a weathered white wall, padlocked and shuttered", width: 1200, height: 1595 },
     ],
-    clip: { id: "y5-v", startSec: 0, endSec: 8 },
+    // 19s, the only source with room to choose a window rather than take
+    // the opening.
+    clip: { id: "y5-v", alt: "a PLACEHOLDER clip from almost", startSec: 4, endSec: 12 },
   },
   {
-    ageFrom: 19,
-    ageTo: 19,
-    year: 2026,
+    id: "b6",
+    phase: "Now",
     title: "Nineteen",
-    turn: "And then, six weeks ago, you let someone new into the middle of it.",
+    turn: "And then you let me in, in the middle of all of it, without waiting for a good time. There was never going to be a good time. I would have taken you in on a Tuesday in the rain.",
     herWords: "You always do this too much.",
     colour: "oklch(0.970 0.012 30)",
     // The one beat in full colour, deliberately.
@@ -171,7 +187,6 @@ export const beats: readonly Beat[] = [
       { id: "y6-c", alt: "a woman in a green sari and sunglasses standing against a wall of painted graffiti", width: 1200, height: 1595 },
       { id: "y6-d", alt: "a woman in a red and gold sari, chin resting on her hand, at a table set with white plates", width: 1200, height: 1600 },
     ],
-    clip: { id: "y6-v", startSec: 0, endSec: 8 },
+    clip: { id: "y6-v", alt: "a PLACEHOLDER clip from nineteen", startSec: 0, endSec: 8 },
   },
 ];
-

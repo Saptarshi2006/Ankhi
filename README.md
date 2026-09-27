@@ -532,3 +532,44 @@ The gate is a real `<a href="/fun/">` with the hold layered on, so it works
 without JavaScript and announces as a link. That is also the whole difficulty: a
 link's own activation is what a short press triggers, so the click is prevented
 unconditionally and navigation happens from the completed hold instead.
+
+### The six beats
+
+No years and no ages. The rail used to carry `0–4`, `5–9` and so on, and a
+whole stage per beat printed a four-digit number alone on screen — a quarter of
+a screen of scroll per beat, spent on a date. `Beat` is now `id`, `phase`,
+`title`, `turn`, `herWords`. `phase` is the short name the rail needs to survive
+a sixth of a phone's width; `title` is the long one on the panel. A chapter
+marker in the margin and a title on the page, which is what a chapter actually
+is.
+
+The two year stages went into `turn`, which is now 1.15 screens instead of 0.6.
+The sum is still 3.9, so `SCREENS_PER_BEAT`, the rail geometry and the length of
+the document are all unchanged — only what a beat contains has moved.
+
+`herWords` had been declared on the type and present in five of the six beats,
+and rendered by nothing at all. It is on screen now, in italic beneath the turn,
+arriving in the back half of the stage so the eye finishes one line before the
+next starts. That stage finishes both by 70% of its length and holds the last
+30%; the first version ran them to 95%, which is about four pixels of scroll with
+both lines settled — on screen, and unreadable.
+
+The copy is written in the letter's voice, on purpose. Six panels of
+greeting-card sentiment in front of the letter would spend the reader's patience
+before the thing it is warming up to arrived.
+
+**The first beat was rendering nothing, and it was this change that did it.**
+`herWords` is optional — the first beat has none — so putting `[data-s-words]`
+in the guard that bails out of building a scene's timeline meant the first beat
+built no timeline at all: no stages, no curtain sweep, and its curtain left
+standing in the middle of the page for the entire timeline, because an unrendered
+slab has no transform and `translateX(0)` is dead centre at z-40.
+
+Two things had to be true afterwards for that not to come back. The curtain is
+`visibility: hidden` in CSS, and the scene sets it visible only for the length of
+the sweep, so the ink is on screen if and only if the wipe is running — the
+resting state costs one missing wipe rather than an invisible site. And a test
+walks every beat's published geometry, because beat 0 was the one beat nobody had
+ever asserted, which is exactly why it went unnoticed. The curtain's resting
+*transform* is still not reliable across beats; visibility is what is painted, and
+that is what the tests now check.

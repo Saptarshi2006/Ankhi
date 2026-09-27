@@ -35,12 +35,46 @@ export default function Curtain({ beat }: { beat: number }): ReactElement {
       data-curtain
       data-curtain-for={beat}
       aria-hidden="true"
+      /*
+       * `hidden` by default, and the scene makes it visible only for the length
+       * of the sweep.
+       *
+       * Two things were wrong at once here. The slab is driven by a `paused`
+       * timeline, so before that trigger has rendered even once the element has
+       * no transform — `translateX(0)`, dead centre, at z-40, a full screen of
+       * ink. And when the trigger *did* exist, the state it left the slab in
+       * depended on the last tween's end value actually being applied, which it
+       * was not: one beat's curtain was still sitting over the middle of the
+       * frame during a beat three scenes later.
+       *
+       * Neither is now load-bearing. Hidden is the resting state, and the
+       * position is parked off the left edge, so a curtain that never renders at
+       * all costs one missing wipe instead of an invisible site. This is the
+       * same reasoning as the pre-blurred poster over a runtime blur: prefer the
+       * thing that costs nothing when it is wrong.
+       */
       className="pointer-events-none absolute inset-0 z-40 overflow-hidden"
+      style={{ visibility: "hidden" }}
     >
       <div
         data-curtain-slab
+        /*
+         * Parked off the left edge in CSS, not just in the timeline.
+         *
+         * The slab is driven by a `paused` timeline, so before its trigger has
+         * rendered even once the element has no transform at all — which is
+         * `translateX(0)`, dead centre, at z-40, covering the entire page. That
+         * is what happened to the first beat's curtain: it sat across the whole
+         * timeline at `translateX(0)` and no test caught it, because every test
+         * looked at opacities of things *underneath* it and a fully opaque slab
+         * is trivially easy to stop seeing.
+         *
+         * With the default here the failure mode is "this beat has no wipe"
+         * rather than "the site is invisible", and the tween still takes over the
+         * moment the trigger does render.
+         */
         className="absolute inset-0 will-change-transform"
-        style={{ background: "var(--curtain)" }}
+        style={{ background: "var(--curtain)", transform: "translateX(-100%)" }}
       >
         {/* Trailing fade, so the slab thins as it leaves rather than ending flat. */}
         <div

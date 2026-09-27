@@ -37,9 +37,14 @@ export const STAGES = [
   { key: "travel", screens: 0.6 },
   { key: "title", screens: 0.5 },
   { key: "curtain", screens: 0.3 },
-  { key: "year", screens: 0.4 },
-  { key: "yearOut", screens: 0.15 },
-  { key: "turn", screens: 0.6 },
+  /*
+   * 1.15, not 0.6. This stage absorbed the two the year used to own — 0.4 to
+   * print it and 0.15 to take it away — and that half a screen is exactly what
+   * a three-sentence turn plus her reply needs to be readable rather than a
+   * flash. The sums still land on 3.9, so `SCREENS_PER_BEAT` and the length of
+   * the whole document are unchanged; only what a beat contains has moved.
+   */
+  { key: "turn", screens: 1.15 },
   { key: "quads", screens: 0.5 },
   { key: "hero", screens: 0.4 },
   { key: "full", screens: 0.45 },
@@ -53,12 +58,10 @@ export const STAGE = {
   travel: 0,
   title: 1,
   curtain: 2,
-  year: 3,
-  yearOut: 4,
-  turn: 5,
-  quads: 6,
-  hero: 7,
-  full: 8,
+  turn: 3,
+  quads: 4,
+  hero: 5,
+  full: 6,
 } satisfies Record<StageKey, StageIndex>;
 
 /** Screens of scroll one whole beat occupies. */

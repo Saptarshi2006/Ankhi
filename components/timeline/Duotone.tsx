@@ -28,7 +28,7 @@ export default function Duotone() {
           const { shadow, highlight } = duotoneRamp(beat.colour);
           return (
             <filter
-              key={beat.year}
+              key={beat.id}
               id={`duotone-${index}`}
               colorInterpolationFilters="sRGB"
               x="-15%"

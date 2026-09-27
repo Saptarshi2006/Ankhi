@@ -177,7 +177,7 @@ export default function Timeline() {
             className="track-scroll flex h-full items-center will-change-transform"
           >
             {beats.map((beat, index) => (
-              <Beat key={beat.year} beat={beat} index={index} />
+              <Beat key={beat.id} beat={beat} index={index} />
             ))}
           </div>
         </div>
@@ -187,7 +187,7 @@ export default function Timeline() {
           See `Curtain` for why that is not a detail.
         */}
         {beats.map((beat, index) => (
-          <Curtain key={beat.year} beat={index} />
+          <Curtain key={beat.id} beat={index} />
         ))}
 
         {/*
@@ -198,7 +198,7 @@ export default function Timeline() {
         */}
         {beats.map((beat, index) => (
           <Takeover
-            key={beat.year}
+            key={beat.id}
             beat={beat}
             index={index}
             filter={beat.fullColour ? undefined : `url(#duotone-${index})`}
