@@ -23,6 +23,8 @@
 
   /* Intro stage height. Must equal STAGE.trackVh × 100vh. */
   --track-stage: 420vh;
+  /* The ink the curtain is made of. */
+  --curtain: oklch(0.3 0.072 335);
 }
 
 @theme inline {
@@ -97,34 +99,35 @@ body {
   overflow: clip;
 }
 
-/* The track moves; the figure and rail are laid out in viewport coordinates. */
+/* The track moves; the figure is a watermark behind it, not a column beside. */
 .track-scroll {
   position: relative;
   height: 100%;
 }
 
 /*
- * A static spacer holding the figure's column, and the only thing that keeps
- * panels clear of the figure. Zero width until there is room for a column.
+ * The four photographs sit in the corners rather than in a centred grid with a
+ * gap, because the middle of the frame has to stay clear: the turn text holds
+ * it, and then the hero pushes out of it. A grid would put its own gap exactly
+ * where the composition is meant to be empty.
+ *
+ * The hero is deliberately allowed to be wider than the gap between them and to
+ * sit over them. It arrives last and has to win, and a hole cut exactly its size
+ * would make the frame look like a template.
+ *
+ * The vertical insets clear the rail at the top and keep clear of the bottom
+ * edge on short viewports, where `vmin` alone would push a photograph under it.
  */
-.timeline-gutter {
-  width: 0;
+[data-quad] {
+  position: absolute;
+  width: min(26vmin, 25vw);
+  height: min(34vmin, 27vh);
 }
 
-/*
- * The track is wider than the viewport, so panels necessarily travel through
- * the figure's column. Without this they are hard-clipped behind it, which
- * reads as broken — you catch a title sliced in half mid-word.
- *
- * Fading the track's left edge instead makes panels dissolve as they leave,
- * so the figure is never occluded and nothing looks cut off. The gradient
- * reaches full opacity exactly at the column's edge, so a panel sitting at the
- * start of the timeline is fully visible and loses nothing.
- */
-.timeline-track-wrap {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26vw);
-  mask-image: linear-gradient(to right, transparent 0, #000 26vw);
-}
+[data-quad="0"] { top: clamp(58px, 14vmin, 132px); left: 7vmin; }
+[data-quad="1"] { top: clamp(58px, 14vmin, 132px); right: 7vmin; }
+[data-quad="2"] { bottom: clamp(26px, 8vmin, 88px); left: 7vmin; }
+[data-quad="3"] { bottom: clamp(26px, 8vmin, 88px); right: 7vmin; }
 
 .timeline-figure {
   position: absolute;
@@ -132,42 +135,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* In portrait there is no room for a column, so the figure stays behind the
-     panels at low opacity and simply keeps growing behind them. */
+  /*
+   * Behind the scenes and faint. It used to sit in its own column at 0.45,
+   * which meant the scenes had 74% of the screen to be centred in — and every
+   * composition in a beat is a centred one. A watermark keeps it growing in the
+   * reader's peripheral vision without ever competing with a photograph.
+   */
   pointer-events: none;
-  color: oklch(0.28 0.045 340 / 0.12);
+  color: oklch(0.28 0.045 340 / 0.085);
 }
 
 .timeline-figure-svg {
-  height: 46vh;
-  width: 46vw;
-}
-
-/*
- * From lg up the figure gets its own column and the track indents past it, so
- * the two never overlap. In portrait the track takes the full width and the
- * figure simply sits behind it.
- */
-@media (min-width: 1024px) {
-  /*
-   * The figure's column on desktop. No background and no z-index needed: the
-   * track is masked across exactly this width, so panels never reach it and
-   * the beat's own background shows through.
-   */
-  .timeline-figure {
-    inset: 0 74% 0 0;
-    color: oklch(0.28 0.045 340 / 0.45);
-  }
-
-  .timeline-figure-svg {
-    height: 62vh;
-    width: 100%;
-    max-width: 220px;
-  }
-
-  .timeline-gutter {
-    width: 26vw;
-  }
+  height: 78vh;
+  width: 78vw;
 }
 
 /*

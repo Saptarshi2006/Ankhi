@@ -58,17 +58,96 @@ rather than the midpoint.
 Six beats, declared in `content/years.ts`. **The copy is placeholder**; the
 colour journey and the media contract are real.
 
-- **Horizontal.** Vertical scroll is translated into horizontal travel inside a
-  pinned frame. The gesture stays vertical, which is what makes this work on a
-  phone — natively sideways-scrolling would fight the page in portrait.
+### A beat is a scene, not a card
+
+Each beat is a nine-stage sequence scrubbed by scroll, declared once as a table
+in `lib/timeline-scroll.ts` and shared by everything that has to stay in step.
+One unit of timeline time is one screen of scroll, so a stage's position in the
+animation and its position on the page are the same number.
+
+| # | stage | what happens |
+|---|---|---|
+| 0 | `travel` | the track slides to this beat, the figure is at full strength, the colour drips in |
+| 1 | `title` | the beat's title grows out of the middle of the frame |
+| 2 | `curtain` | a slab of ink crosses the screen, title leaving under it and the year revealed behind it |
+| 3 | `year` | the year, alone |
+| 4 | `yearOut` | the year leaves sideways |
+| 5 | `turn` | the one sentence that is the beat, in the middle |
+| 6 | `quads` | four photographs arrive from the sides into the four corners |
+| 7 | `hero` | the clip pushes out of the middle; the turn recedes, the photographs dim |
+| 8 | `full` | the image takes the whole screen — every other layer is gone |
+
+The stage costs are deliberately uneven: the two a reader has to read get most
+of the scroll, the two that are pure choreography get very little. A beat is
+about 3.9 screens, so the timeline is ~23 screens and the document ~30.
+
+**The age is not printed anywhere in a beat.** The rail carries the ages
+continuously and highlights the active one; putting `ages 5–9` under the year
+turned the moment into a label. The ages still drive the figure's growth, they
+just aren't type.
+
+### The parts that had to escape the track
+
+Three things cannot live inside the horizontally scrolling track, and each was
+found by it visibly failing rather than by reasoning:
+
+- **The takeover.** A `position: fixed` overlay under a transformed ancestor is
+  anchored to *that ancestor*, so a full-screen takeover built inside the track
+  slides sideways with the panels and vanishes under the track's mask. It is a
+  sibling of the track, and it is handed the hero's live rect on entry, so the
+  two are the same pixels at the moment of handover and the growth reads as one
+  continuous image. It holds full screen across the next beat's travel and lifts
+  over the last of it — which is what stops the transition between beats from
+  being visible as a slide of full-screen panels.
+- **The curtain**, for a different reason: the track carries
+  `will-change: transform`, which makes it a stacking context, so the ink's
+  `z-30` was scoped to the track and could never rise above the rail or the
+  signature. The wipe swept the photographs and left the chrome floating on top
+  of it. It is a sibling of the track too.
+- **The figure**, which gave up its column. It was a column so panels could sit
+  clear of it, which left the scenes 74% of the screen to be centred in — and
+  every composition in a beat is a centred one. Full-width panels make the
+  travel a clean carousel, make the handover exact, and let the figure keep
+  growing as a full-bleed watermark behind everything.
+
+### Measuring position under a pin
+
+Nothing in the timeline may use `section.getBoundingClientRect().top + scrollY`.
+That is only right while the section is *not* pinned, and this section is pinned
+for the whole timeline: ScrollTrigger holds it at the top of the viewport, so its
+rect top is `0` and adding `scrollY` returns wherever the reader currently is.
+Every range derived from it slides with the scroll — a trigger's start moves
+every frame and never settles. `sectionTop` reads the pin-spacer instead, which
+is an ordinary block in normal flow and never moves.
+
+Two related traps, both of which cost a stage or a beat:
+
+- A timeline's duration is wherever its last tween happens to end, which is
+  usually short of the range it is scrubbed across. ScrollTrigger then stretches
+  it to fit and every tween lands proportionally early. Each timeline is padded
+  to its full length so one unit stays one screen.
+- An absolute offset is not a duration. Using a beat's end *position* as the
+  length of its trigger gave one beat a range of 11.7 screens instead of 3.9,
+  which pushed the year, the turn, the photographs and the hero past the point
+  the reader could reach.
+
+### What the beats have in common
+
+- **Horizontal, with a dwell.** Vertical scroll becomes horizontal travel inside
+  a pinned frame, so the gesture stays vertical — which is what makes this work
+  on a phone. But the track *stops* for most of a beat, so a composition can
+  stand still in the middle of the frame, and only moves during the opening
+  travel. A single even tween across the pin would slide the panels continuously
+  underneath a scene that is supposed to be standing still.
 - **A figure that grows.** Head-to-height runs from about a quarter at birth to
   about a seventh at nineteen, with the neck appearing around five. Continuous
-  under scrub, not six states. It stands in its own column on desktop; in
-  portrait it moves behind the panels and keeps growing.
+  under scrub, not six states.
 - **A colour journey.** Hue travels cool to warm and lands on the same rose the
   intro and the letter use, so the page's colour arc resolves where the love
-  letter arrives. All six backgrounds are light, which is why one ink colour
-  serves the whole timeline — asserted at AAA in the tests.
+  letter arrives. The takeover inherits `--timeline-bg`, so the journey carries
+  on behind the full-screen image rather than stopping dead. All six backgrounds
+  are light, which is why one ink colour serves the whole timeline — asserted
+  at AAA in the tests.
 - **A liquid drip** between beats, with beads running ahead of the front. It is
   procedural rather than a MorphSVG tween: a pure function of progress is
   cheaper per frame than point-matching, gives direct control over where the
@@ -76,6 +155,14 @@ colour journey and the media contract are real.
 - **Duotone per beat**, each ramp derived from that beat's own colour, so
   background, photographs and video all shift together. One beat — the present —
   stays in full colour, which is what marks the move from her past to now.
+
+### Tests
+
+Each stage boundary has a test, and they read the geometry the scene publishes
+about itself (`data-scene-start`, `data-stage-keys`, `data-stage-offsets`) rather
+than carrying their own copy of the stage table. Two of them are worth calling
+out because they are the ones that would have caught the bugs above: the order
+the stages first appear in, and that only one takeover is ever on screen.
 
 ### Timeline media
 

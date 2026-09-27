@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { beats } from "@/content/years";
 
 /** Touch devices have no wheel to drive. */
 const isCoarsePointer = (page: Page) =>
@@ -29,6 +30,29 @@ async function scrollBy(page: Page, total: number, steps = 14) {
 
   // Lenis eases toward the target rather than landing on it.
   await page.waitForTimeout(500);
+}
+
+/**
+ * Set the scroll position directly, and make sure it stuck.
+ *
+ * `waitForScrollSettle` cannot be relied on beforehand: Lenis's easing moves
+ * less than a pixel per sample once it is finishing, so three identical
+ * readings arrive while it still has force, and on the next frame it puts the
+ * page back where it thought it should be. That presents as the thing being
+ * tested being broken — a jump to 7056 silently became 3224, which is not
+ * inside any beat at all.
+ */
+async function jumpTo(page: Page, y: number) {
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate((to) => window.scrollTo({ top: to, behavior: "instant" }), y);
+        await page.waitForTimeout(140);
+        return page.evaluate(() => Math.round(window.scrollY));
+      },
+      { timeout: 8000, message: `the jump to ${y} never stuck` },
+    )
+    .toBe(y);
 }
 
 const balloon = (page: Page) => page.locator('svg[viewBox="0 0 200 320"]');
@@ -193,7 +217,15 @@ test.describe("balloon intro", () => {
 
     // Phase F — every line of the letter ends up readable. SplitText emits
     // divs, and hides them behind the line's own aria-label.
-    await scrollBy(page, 6000, 40);
+    //
+    // To the end of the document rather than a fixed distance: the timeline is
+    // nearly four screens of scroll per beat, so 6000px no longer reaches the
+    // letter and this quietly asserted against a letter that had not arrived.
+    const bottom = await page.evaluate(
+      () => document.documentElement.scrollHeight - window.innerHeight,
+    );
+    await jumpTo(page, bottom);
+    await page.waitForTimeout(600);
     await expect(lines(page)).toHaveCount(12);
     await expect(page.locator("[data-line] div").first()).toHaveCSS("opacity", "1", {
       timeout: 10_000,
@@ -460,6 +492,143 @@ test.describe("the timeline", () => {
   }
 
   /** Scroll on until the timeline is pinned. */
+
+/**
+ * What is currently visible for one beat.
+ *
+ * Deliberately keyed off what is *visible* rather than off scroll offsets. The
+ * stage table lives in `lib/timeline-scroll.ts` and is a design decision, not a
+ * contract; a test that hardcodes the same numbers would pass while the design
+ * drifted and fail when it was correct.
+ */
+const seen = (page: Page, beat: number) =>
+  page.evaluate((i) => {
+    const scene = document.querySelector(`[data-scene="${i}"]`)!;
+    const on = (sel: string) => {
+      const el = scene.querySelector(sel);
+      return el ? Number.parseFloat(getComputedStyle(el).opacity) > 0.05 : false;
+    };
+    const quads = [...scene.querySelectorAll("[data-quad]")].filter(
+      (el) => Number.parseFloat(getComputedStyle(el).opacity) > 0.05,
+    ).length;
+    const takeovers = [...document.querySelectorAll("[data-takeover]")].filter(
+      (el) => Number.parseFloat(getComputedStyle(el).opacity) > 0.02,
+    );
+    /*
+     * The curtain is a sibling of the track, not a child of the scene — it has
+     * to be, so that it can actually cover the page. Look for it where it
+     * lives, addressed by the beat it belongs to.
+     */
+    const slab = document.querySelector<HTMLElement>(
+      `[data-curtain-for="${i}"] [data-curtain-slab]`,
+    );
+    if (!slab) throw new Error(`no curtain for beat ${i}`);
+    return {
+      title: on("[data-s-title]"),
+      year: on("[data-s-year]"),
+      turn: on("[data-s-turn]"),
+      quads,
+      hero: on("[data-hero]"),
+      yearText: scene.querySelector("[data-s-year]")?.textContent?.trim() ?? "",
+      curtainX: new DOMMatrixReadOnly(getComputedStyle(slab).transform).m41,
+      curtainOpacity: Number.parseFloat(getComputedStyle(slab.parentElement!).opacity),
+      takeovers: takeovers.map((el) => (el as HTMLElement).dataset.takeoverBeat ?? ""),
+      takeoverBox: takeovers[0]
+        ? {
+            w: takeovers[0].getBoundingClientRect().width,
+            h: takeovers[0].getBoundingClientRect().height,
+          }
+        : null,
+      trackLeft: Math.round(
+        document.querySelector(".track-scroll")!.getBoundingClientRect().left,
+      ),
+      beatWidth: document.querySelector<HTMLElement>("[data-timeline]")!.clientWidth,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+    };
+  }, beat);
+
+  /**
+   * The absolute scroll position of a point inside one of a beat's stages.
+   *
+   * Read from the geometry the scene publishes about itself, so a test never
+   * carries its own copy of the stage table.
+   */
+  async function stageY(page: Page, beat: number, stage: number, fraction = 0.5) {
+    return page.evaluate(
+      ({ beat: b, stage: st, fraction: f }) => {
+        const scene = document.querySelector<HTMLElement>(`[data-scene="${b}"]`)!;
+        const start = Number(scene.dataset.sceneStart);
+        const offsets = scene.dataset.stageOffsets!.split(",").map(Number);
+        const screens = scene.dataset.stageScreens!.split(",").map(Number);
+        return Math.round(start + (offsets[st] + screens[st] * f) * window.innerHeight);
+      },
+      { beat, stage, fraction },
+    );
+  }
+
+  /**
+   * The index of a stage, by name, as the scene itself declares it.
+   *
+   * By name, not by scroll cost: two of the stages are 0.5 screens long, so
+   * looking one up by its size found the title when the test meant the
+   * photographs.
+   */
+  async function stageIndex(page: Page, beat: number, key: string) {
+    return page.evaluate(
+      ({ b, k }) => {
+        const scene = document.querySelector<HTMLElement>(`[data-scene="${b}"]`)!;
+        return scene.dataset.stageKeys!.split(",").indexOf(k);
+      },
+      { b: beat, k: key },
+    );
+  }
+
+  /**
+   * Walk the timeline in small steps, recording what is on screen at each.
+   *
+   * Steps are small enough that a stage cannot be missed — the curtain is only
+   * a third of a screen — and each one waits just long enough for `scrub` to
+   * finish catching up. `scrollBy` waits half a second for Lenis on every call,
+   * which is right for a reader's gesture and ruinous when sampling forty
+   * positions.
+   */
+  async function walk(
+    page: Page,
+    beat: number,
+    spanPx: number,
+    stepPx: number,
+  ): Promise<Awaited<ReturnType<typeof seen>>[]> {
+    const out = [];
+    for (let travelled = 0; travelled < spanPx; travelled += stepPx) {
+      await page.evaluate((dy) => window.scrollBy(0, dy), stepPx);
+      await page.waitForTimeout(450);
+      out.push(await seen(page, beat));
+    }
+    return out;
+  }
+
+  /**
+   * Put the reader just before a beat's opening travel stage.
+   *
+   * Derived from the range the scene publishes for itself rather than guessed:
+   * a beat is nearly four screens of scroll now, so "scroll a bit and hope"
+   * lands in the wrong beat often enough to matter.
+   */
+  async function enterBeat(page: Page, index: number) {
+    await enterTimeline(page);
+    await gotoStage(page, index, 0, 0.1);
+  }
+
+  /** Scroll to a point inside a stage and let the scrub catch up. */
+  async function gotoStage(page: Page, beat: number, stage: number, fraction = 0.5) {
+    const y = await stageY(page, beat, stage, fraction);
+    expect(Number.isFinite(y), `beat ${beat} stage ${stage} has no position`).toBe(true);
+    await jumpTo(page, y);
+    // Now let the scrub finish catching up, which is a separate clock again.
+    await page.waitForTimeout(800);
+  }
+
   async function enterTimeline(page: Page) {
     await reachTimeline(page);
     for (let i = 0; i < 30; i += 1) {
@@ -472,6 +641,17 @@ test.describe("the timeline", () => {
       if (inside) return;
       await scrollBy(page, 400, 4);
     }
+
+    /*
+     * Let go of the wheel.
+     *
+     * Everything past this point sets the scroll position directly rather than
+     * by gesture, and Lenis reconciles against a programmatic jump on its next
+     * frame — so while it is still animating it puts the page back where it
+     * thought it should be. That looked like the stage geometry being wrong:
+     * a jump to 7056 silently became 3224, which is not a beat at all.
+     */
+    await waitForScrollSettle(page);
   }
 
   test("renders one panel per beat, in order, before the letter", async ({ page }) => {
@@ -494,20 +674,205 @@ test.describe("the timeline", () => {
     expect(letterFollowsTimeline).toBe(true);
   });
 
-  test("travels horizontally as the reader scrolls down", async ({ page }) => {
+  test("plays each beat's stages in the intended order", async ({ page }) => {
+    test.slow();
+    await enterBeat(page, 1);
+
+    /*
+     * Walks past a whole beat and records the first step at which each thing
+     * appears, then asserts the order those first appearances happen in. This is
+     * the contract the choreography actually promises — title, then year, then
+     * turn, then photographs, then hero, then takeover — and it holds regardless
+     * of how the scroll budget is divided between the stages.
+     */
+    const firstSeen: Record<string, number> = {};
+    const samples = await walk(page, 1, 3400, 100);
+    samples.forEach((s, step) => {
+      for (const key of ["title", "year", "turn", "hero"] as const) {
+        if (s[key] && firstSeen[key] === undefined) firstSeen[key] = step;
+      }
+      if (s.quads > 0 && firstSeen.quads === undefined) firstSeen.quads = step;
+      if (s.takeovers.includes("1") && firstSeen.takeover === undefined) firstSeen.takeover = step;
+    });
+
+    for (const key of ["title", "year", "turn", "quads", "hero", "takeover"]) {
+      expect(firstSeen[key], `${key} never appeared`).toBeDefined();
+    }
+    expect(firstSeen.title!).toBeLessThan(firstSeen.year!);
+    expect(firstSeen.year!).toBeLessThan(firstSeen.turn!);
+    expect(firstSeen.quads!).toBeLessThan(firstSeen.hero!);
+    expect(firstSeen.hero!).toBeLessThan(firstSeen.takeover!);
+  });
+
+  test("gives the year a stage to itself", async ({ page }) => {
+    await enterTimeline(page);
+    await gotoStage(page, 1, 3, 0.75);
+
+    const s = await seen(page, 1);
+    expect(s.year).toBe(true);
+    // Read from the content rather than hardcoded, so editing a beat's year
+    // does not fail a test about the year getting a stage to itself.
+    expect(s.yearText).toBe(String(beats[1].year));
+    // Nothing else on screen, and specifically no age range: the rail carries
+    // the ages continuously, and printing them here made the year a label.
+    expect(s.title).toBe(false);
+    expect(s.turn).toBe(false);
+    expect(s.quads).toBe(0);
+    expect(s.hero).toBe(false);
+    expect(s.takeovers).toHaveLength(0);
+  });
+
+  test("the title surfaces, and nothing else is on screen while it does", async ({ page }) => {
+    await enterTimeline(page);
+    await gotoStage(page, 1, 1, 0.9);
+
+    const s = await seen(page, 1);
+    expect(s.title).toBe(true);
+    expect(s.yearText && s.year).toBe(false);
+    expect(s.turn).toBe(false);
+    expect(s.quads).toBe(0);
+    expect(s.hero).toBe(false);
+    expect(s.takeovers).toHaveLength(0);
+  });
+
+  test("the curtain crosses the screen and never comes to rest", async ({ page }) => {
+    test.slow();
     await enterTimeline(page);
 
-    const left = () =>
-      page.evaluate(() =>
-        Math.round(document.querySelector(".track-scroll")!.getBoundingClientRect().left),
-      );
+    /*
+     * Sampled across the whole beat rather than across a guessed window: the
+     * ink is a third of a screen wide and moves fast, so a fixed sample rate
+     * either misses it or samples nothing else.
+     */
+    const curtainIndex = await stageIndex(page, 1, "curtain");
+    expect(curtainIndex, "the curtain stage is gone from the table").toBeGreaterThan(-1);
 
-    const start = await left();
-    await scrollBy(page, 2500, 20);
-    const later = await left();
+    const before = await seen(page, 1);
+    await gotoStage(page, 1, curtainIndex, 0.5);
+    const during = await seen(page, 1);
+    await gotoStage(page, 1, curtainIndex + 1, 0.5);
+    const after = await seen(page, 1);
 
-    // Vertical scroll is translated into leftward travel.
-    expect(later).toBeLessThan(start - 200);
+    // Off to one side, then across, then off to the other: a crossing.
+    expect(before.curtainX).toBeLessThan(-during.vw * 0.4);
+    expect(after.curtainX).toBeGreaterThan(during.vw * 0.4);
+    // Mid-sweep it is genuinely in frame, not teleported past.
+    expect(Math.abs(during.curtainX)).toBeLessThan(during.vw * 0.7);
+  });
+
+  test("the four photographs fill the four corners, centre left clear", async ({ page }) => {
+    await enterTimeline(page);
+    const quadsIndex = await stageIndex(page, 1, "quads");
+    expect(quadsIndex, "the photographs stage is gone from the table").toBeGreaterThan(-1);
+    await gotoStage(page, 1, quadsIndex, 0.9);
+
+    expect((await seen(page, 1)).quads).toBe(4);
+
+    // Read the geometry inside the page: `window` is not a thing out here.
+    const geometry = await page.evaluate(() => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const boxes = [...document.querySelectorAll('[data-scene="1"] [data-quad]')].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+      });
+      const midX = vw / 2;
+      const midY = vh / 2;
+      return {
+        count: boxes.length,
+        left: boxes.filter((b) => b.x < midX).length,
+        right: boxes.filter((b) => b.x > midX).length,
+        rows: [...new Set(boxes.map((b) => (b.y < midY ? "top" : "bottom")))].sort(),
+        // A photograph covering the middle would leave nowhere for the turn
+        // text, and nowhere for the hero to come out of.
+        centre: boxes.filter(
+          (b) => Math.abs(b.x - midX) < b.w / 2 && Math.abs(b.y - midY) < b.h / 2,
+        ).length,
+      };
+    });
+
+    expect(geometry.count).toBe(4);
+    expect(geometry.left).toBe(2);
+    expect(geometry.right).toBe(2);
+    expect(geometry.rows).toEqual(["bottom", "top"]);
+    expect(geometry.centre).toBe(0);
+  });
+
+  test("the track holds still while a beat plays and moves between beats", async ({ page }) => {
+    test.slow();
+    await enterBeat(page, 1);
+
+    /*
+     * The point of the per-beat scene: the panels stop travelling for most of a
+     * beat, so a composition can stand still in the middle of the frame, and
+     * only move during the opening travel.
+     */
+    const xs = (await walk(page, 1, 3400, 100)).map((s) => s.trackLeft);
+    const moved = xs.filter((x, i) => i > 0 && Math.abs(x - xs[i - 1]) > 2).length;
+
+    // Mostly still...
+    expect(moved / xs.length).toBeLessThan(0.45);
+    // ...but not frozen, and only ever leftward.
+    expect(moved).toBeGreaterThan(0);
+    expect(Math.min(...xs)).toBeLessThan(Math.max(...xs));
+  });
+
+  test("only one takeover is ever on screen", async ({ page }) => {
+    test.slow();
+    await enterBeat(page, 1);
+
+    /*
+     * Six full-screen overlays, one per beat. An earlier version released them
+     * on `onLeave`, and nothing resets a trigger that is entirely behind the
+     * scroll — so they accumulated until five were stacked over the page.
+     */
+    const counts = (await walk(page, 1, 3400, 100)).map((s) => s.takeovers.length);
+    expect(Math.max(...counts)).toBeLessThanOrEqual(1);
+  });
+
+  test("the hero takes the whole screen before the next year starts", async ({ page }) => {
+    await enterTimeline(page);
+    // The takeover has finished growing by the time this stage is done, so
+    // look at its end rather than its start.
+    await gotoStage(page, 1, await stageIndex(page, 1, "full"), 0.9);
+
+    const s = await seen(page, 1);
+    const where = await page.evaluate(() => {
+      const sc = document.querySelector('[data-scene="1"]') as HTMLElement;
+      const layer = (sel: string) => {
+        const el = sc.querySelector(sel);
+        if (!el) return "none";
+        const c = getComputedStyle(el);
+        return `${c.opacity}/${c.visibility}`;
+      };
+      return {
+        y: Math.round(scrollY),
+        vh: window.innerHeight,
+        start: sc.dataset.sceneStart,
+        title: layer("[data-s-title]"),
+        year: layer("[data-s-year]"),
+        turn: layer("[data-s-turn]"),
+        hero: layer("[data-hero]"),
+        takeovers: [...document.querySelectorAll("[data-takeover]")]
+          .map((t) => {
+            const c = getComputedStyle(t as HTMLElement);
+            return `${(t as HTMLElement).dataset.takeoverBeat}:${c.opacity}`;
+          })
+          .join(" "),
+      };
+    });
+    const at = JSON.stringify(where);
+
+    expect(s.takeovers, at).toEqual(["1"]);
+    // The overlay fills the frame...
+    expect(s.takeoverBox!.w, at).toBeGreaterThan(s.vw * 0.95);
+    expect(s.takeoverBox!.h, at).toBeGreaterThan(s.vh * 0.95);
+    // ...and nothing of the beat is left on screen behind it. The hero stays
+    // visible on purpose: it is the same image the overlay is growing out of,
+    // and it is fully hidden the moment the takeover covers the frame.
+    expect(s.quads, at).toBe(0);
+    expect(s.turn, at).toBe(false);
+    expect(s.title, at).toBe(false);
   });
 
   test("the figure grows as the reader scrolls", async ({ page }) => {
@@ -537,7 +902,19 @@ test.describe("the timeline", () => {
       getComputedStyle(document.querySelector("[data-liquid-base]")!).backgroundColor,
     );
 
-    await scrollBy(page, 5000, 40);
+    /*
+     * The end of the pin, found rather than guessed. The timeline is 23 screens
+     * of scroll now, so a fixed offset lands wherever it happens to.
+     */
+    const endY = await page.evaluate(() => {
+      const spacer = document.querySelector<HTMLElement>("[data-timeline]")!.parentElement!;
+      const bottom = Math.round(spacer.getBoundingClientRect().top + scrollY) + spacer.clientHeight;
+      // Stop a viewport short of the very bottom, so this is the end of the last
+      // beat rather than the letter that follows it.
+      return bottom - window.innerHeight;
+    });
+    await jumpTo(page, endY);
+    await page.waitForTimeout(900);
     const end = await page.evaluate(() =>
       getComputedStyle(document.querySelector("[data-liquid-base]")!).backgroundColor,
     );
@@ -553,7 +930,9 @@ test.describe("the timeline", () => {
 
     const duotoned = await page.evaluate(() =>
       [...document.querySelectorAll("[data-beat]")].map((beat) => {
-        const media = beat.querySelector("video, img");
+        // The hero's media element itself: in the clip case `data-hero` is the
+        // wrapper around the video, and the wrapper carries no filter.
+        const media = beat.querySelector("[data-hero] video") ?? beat.querySelector("[data-hero]");
         return media ? getComputedStyle(media).filter : null;
       }),
     );

@@ -5,28 +5,44 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { beats } from "@/content/years";
-import { pinDistance, sectionRange } from "@/lib/timeline-scroll";
+import {
+  SCREENS_PER_BEAT,
+  STAGES,
+  STAGE,
+  beatCentreX,
+  pinDistance,
+  sectionRange,
+  stageOffset,
+} from "@/lib/timeline-scroll";
 import Beat from "./Beat";
+import Curtain from "./Curtain";
 import Duotone from "./Duotone";
 import Figure from "./Figure";
 import Liquid from "./Liquid";
 import Rail from "./Rail";
+import Takeover from "./Takeover";
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
  * The years between the title and the letter.
  *
- * Vertical scroll is translated into horizontal travel inside a pinned frame,
- * so the gesture stays vertical — which is the whole reason this works on a
- * phone. A natively sideways-scrolling section would fight the page in
- * portrait, and that was the objection to this layout in the first place.
+ * Vertical scroll becomes horizontal travel inside a pinned frame, so the
+ * gesture stays vertical — which is the whole reason this works on a phone. A
+ * natively sideways-scrolling section would fight the page in portrait, and that
+ * was the objection to this layout in the first place.
  *
- * The frame is pinned with ScrollTrigger's `pin` rather than CSS `sticky`,
- * which is the one deliberate exception to the rule used by the intro. A
- * horizontal scroller is exactly one viewport tall and has to stay put;
- * `sticky` would demand a section as tall as its entire horizontal content,
- * which would be several thousand pixels of nothing to scroll through.
+ * The track is pinned with ScrollTrigger's `pin` rather than CSS `sticky`, the
+ * one deliberate exception to the rule used by the intro. A horizontal scroller
+ * is exactly one viewport tall and has to stay put; `sticky` would demand a
+ * section as tall as its entire horizontal content, which would be several
+ * thousand pixels of nothing to scroll through.
+ *
+ * The travel is *not* linear in scroll. Each beat is a scene that occupies the
+ * screen while the track holds still, so the track only moves during each
+ * beat's opening travel stage. A single even tween across the whole pin would
+ * slide the panels continuously underneath a scene that is supposed to be
+ * standing still.
  */
 export default function Timeline() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -38,30 +54,57 @@ export default function Timeline() {
       const track = trackRef.current;
       if (!section || !track) return;
 
-      const distance = pinDistance();
+      const setBeatWidth = () => {
+        section.style.setProperty("--beat-w", `${section.clientWidth}px`);
+      };
+      setBeatWidth();
 
-      // How far the track has to travel to bring the last panel fully in.
-      const overflow = () => Math.max(0, track.scrollWidth - window.innerWidth);
+      // One unit is one screen of scroll, matching `stageOffset`, so a tween
+      // placed at a stage's offset lands on that stage.
+      const tl = gsap.timeline({ paused: true });
 
-      const tween = gsap.to(track, {
-        x: () => -overflow(),
-        ease: "none",
-        scrollTrigger: {
-          trigger: section,
-          pin: true,
-          scrub: 0.55,
-          // Anticipate the pin: without it, a fast flick into the section can
-          // arrive after the frame should already have stopped.
-          anticipatePin: 1,
-          invalidateOnRefresh: true,
-          start: () => sectionRange(section).start,
-          end: () => sectionRange(section).start + distance,
-        },
+      for (let i = 1; i < beats.length; i += 1) {
+        tl.to(
+          track,
+          {
+            x: () => beatCentreX(i),
+            duration: STAGES[STAGE.travel].screens,
+            ease: "power1.inOut",
+          },
+          stageOffset(i, 0),
+        );
+      }
+      /*
+       * Pad across the whole pin. The last tween ends at the start of the final
+       * beat, so without this the timeline is short by that beat's whole length
+       * and ScrollTrigger stretches it to fit — every tween then lands
+       * proportionally early, and the final beat never centres.
+       */
+      tl.set(track, {}, beats.length * SCREENS_PER_BEAT);
+
+      // Beat 0 is already centred when the section arrives; there is nowhere to
+      // travel from, so its travel stage is the colour settling instead.
+      gsap.set(track, { x: () => beatCentreX(0) });
+
+      const trigger = ScrollTrigger.create({
+        trigger: section,
+        pin: true,
+        scrub: 0.4,
+        animation: tl,
+        // Anticipate the pin: without it, a fast flick into the section can
+        // arrive after the frame should already have stopped.
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        start: () => sectionRange(section).start,
+        end: () => sectionRange(section).start + pinDistance(),
+        // Set before anything is measured, so the panels are already the right
+        // width when the travel distance is worked out from them.
+        onRefreshInit: setBeatWidth,
       });
 
       return () => {
-        tween.scrollTrigger?.kill();
-        tween.kill();
+        trigger.kill();
+        tl.kill();
       };
     },
     { scope: sectionRef },
@@ -74,37 +117,59 @@ export default function Timeline() {
         <Liquid />
 
         {/*
-          One figure, repositioned per breakpoint rather than rendered twice:
-          a hidden second copy would still mount and still write attributes
-          every frame. On desktop it occupies the left column; in portrait
-          there is no room for a column, so it sits behind the panels at low
-          opacity and keeps growing.
+          One figure, kept as a full-bleed watermark behind the scenes rather
+          than a column beside them.
+
+          It was a column so panels could sit clear of it, which meant the scenes
+          had 74% of the screen to be centred in — and every composition in a
+          beat is a centred one. With the panel a full viewport wide, "the middle"
+          is the middle, and the figure still keeps growing behind everything.
+
+          One copy, not two: a hidden second would still mount and still write
+          attributes every frame.
         */}
         <div className="timeline-figure">
           <Figure className="timeline-figure-svg" />
         </div>
 
-        <div className="timeline-track-wrap flex h-full items-center">
-          {/*
-            The figure's column is a static sibling, not padding on the track.
-            Padding on the track would travel with it: the first panel would
-            slide left out from under the figure and the column would sit empty
-            for the whole first beat. It also keeps the track's scrollWidth
-            equal to the panels alone, which is what the travel distance is
-            measured from.
-          */}
-          <div className="timeline-gutter shrink-0" aria-hidden="true" />
-
+        {/*
+          Full-width panels, contiguous, so the track's travel is a whole number
+          of viewports. That exactness is what lets the takeover cover the
+          screen and then uncover the next beat without a visible slide.
+        */}
+        <div className="timeline-track-wrap h-full">
           <div
             ref={trackRef}
-            className="track-scroll flex h-full min-w-0 items-center will-change-transform"
+            className="track-scroll flex h-full items-center will-change-transform"
           >
             {beats.map((beat, index) => (
               <Beat key={beat.year} beat={beat} index={index} />
             ))}
-            <div className="w-[6vw] shrink-0" aria-hidden="true" />
           </div>
         </div>
+
+        {/*
+          The curtains, one per beat, beside the track rather than inside it.
+          See `Curtain` for why that is not a detail.
+        */}
+        {beats.map((beat, index) => (
+          <Curtain key={beat.year} beat={index} />
+        ))}
+
+        {/*
+          The takeovers. Fixed, so they sit in viewport coordinates rather than
+          travelling with the track, and siblings of it rather than children —
+          a fixed element under a transformed ancestor is anchored to that
+          ancestor, and this one has to be able to leave the track behind.
+        */}
+        {beats.map((beat, index) => (
+          <Takeover
+            key={beat.year}
+            beat={beat}
+            index={index}
+            filter={beat.fullColour ? undefined : `url(#duotone-${index})`}
+          />
+        ))}
 
         <Rail />
       </div>
