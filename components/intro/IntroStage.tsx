@@ -7,6 +7,7 @@ import { useGSAP } from "@gsap/react";
 import { STAGE, at } from "@/lib/stage-ranges";
 import Balloon from "./Balloon";
 import Reprise from "./Reprise";
+import IntroPhoto from "./IntroPhoto";
 import RevealLine from "./RevealLine";
 import TitleSpread from "./TitleSpread";
 
@@ -211,6 +212,14 @@ export default function IntroStage({
           scrolling back up never lands on an empty screen.
         */}
         {popped && <Reprise />}
+
+        {/*
+          Before `TitleSpread` in the DOM so the words paint over it while they
+          are still travelling out to the edges. The photograph only becomes
+          visible once they have cleared the middle, so the overlap is brief and
+          in the direction that reads correctly.
+        */}
+        <IntroPhoto />
 
         <TitleSpread />
 

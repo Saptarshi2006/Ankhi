@@ -29,16 +29,39 @@ export const STAGE = {
   spreadEnd: 2.7,
 
   /**
-   * F · the words leave, and the years come up.
+   * F · the words leave, and the photograph arrives.
    *
-   * The words fade from `wordsOut` to `revealIn`, so they are fully clear
-   * before the new line starts and it owns the middle of the frame on its own. That is not only a compositional preference: at full
-   * spread the gap between "Happy" and "19th" is 463px on a desktop but 96px on
-   * a phone, which is one short line and nothing more. Anything placed between
-   * them would be clipped on the device this site is most likely read on.
+   * These are strictly sequential rather than crossfaded, and that is a
+   * conclusion reached by looking at it rather than by reasoning about it. The
+   * middle of this frame is one cell, and on a phone the parted words leave only
+   * 96px of gap — so any moment where the words are still partly opaque and the
+   * photograph is also partly opaque puts "Happy" straight across the middle of
+   * the picture. At full overlap it does not read as a transition, it reads as
+   * a mistake. A hard hand-off is the only version that works at every width.
    */
   wordsOut: 2.7,
-  revealIn: 3.0,
+  /** The words are completely gone, and the frame is empty in the middle. */
+  wordsClear: 3.0,
+
+  /**
+   * G · the photograph, alone in the middle of the frame.
+   *
+   * Ends exactly where the years start arriving, so the two can never share the
+   * cell. It is the only thing in the frame for its whole life, which is the
+   * point — it is the one beat of the intro that is just a picture.
+   */
+  photoIn: 3.0,
+  photoSettled: 3.25,
+
+  /**
+   * The span of the whole timeline, blooming in once the photograph has gone.
+   *
+   * Later than the words finishing their exit, because the photograph needs the
+   * middle to itself first. The years still get `revealEnd - revealIn` to bloom
+   * and still hold through the un-pin, so shortening their bloom cost the frame
+   * nothing.
+   */
+  revealIn: 3.45,
   revealEnd: 4.0,
 
   /**

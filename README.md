@@ -322,11 +322,42 @@ not. Plan against roughly 3.6MB on mobile and 9MB on desktop for real
 eight-second clips, and treat `startSec` / `endSec` as editorial: trimming is
 the lever on all of it.
 
+### The photograph, and then the years
+
+The middle of the intro frame is one grid cell, and three things want it: the
+title, a photograph of the two of them, and the span of the years. They are
+strictly sequential, and the order is `wordsOut 2.7 → wordsClear 3.0` for the
+words, `photoIn 3.0 → photoSettled 3.25 → revealIn 3.45` for the photograph, and
+`revealIn 3.45 → revealEnd 4.0` for the years.
+
+The photograph crossfaded in against the departing words at first. It looked
+right on a desktop and put "Happy" straight across the middle of the picture on
+a phone, because the parted words leave only 96px of gap there — there is no
+width in which both being half-opaque reads as a transition rather than a
+collision. `revealIn` moving from 3.0 to 3.45 is what buys the photograph a
+window; the years still bloom and still hold through the un-pin, so the frame
+lost nothing. The test asserts the mutual exclusion rather than the timings,
+because the timings are what someone would retune.
+
+Both the photograph and the years arrive the same way — `blur(14px)` to sharp,
+scaled from 0.92 — since they are two arrivals in the same cell and should look
+like the same kind of arrival. The photograph is `h-[min(70svh,72vw)]`: the
+`svh` half stops it outgrowing the sticky viewport and being clipped by
+`overflow: clip`, the `vw` half stops it running off the sides on a narrow one.
+
+Its exit is a `fromTo` rather than a `to` on purpose. With a plain `to`, GSAP
+reads the start value off the element the first time the tween renders, so a
+reader who scrolls fast lands with the entry tween never having run, `autoAlpha`
+still 0, and the exit animating 0 to 0 — the photograph simply never appears.
+
+`intro-0.jpg` is not a `y<N>-<letter>` timeline photograph and does not live in
+`content/years.ts`, but it goes through the same pipeline, because
+`optimize-images.mjs` works off whatever is in `content/media/`.
+
 ### The years, after the title
 
-Once "Happy" and "19th" have parted, the words fade across the last of the
-spread and the span of the whole timeline blooms in behind them: `blur(14px)` to
-sharp, scaled from 0.92, faded up, all scrubbed from the centre.
+Once the photograph has gone, the span of the whole timeline blooms in:
+`blur(14px)` to sharp, scaled from 0.92, faded up, all scrubbed from the centre.
 
 A blur rather than a plain fade, because at that size a fade reads as a caption
 appearing and a blur reads as something coming into focus.

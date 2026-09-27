@@ -109,13 +109,13 @@ export default function TitleSpread() {
     );
 
     /*
-     * F · the words clear out, and the years come up.
+     * F · the words clear out, and the middle is left empty.
      *
      * They used to hold until the un-pin and fade over the tail. They cannot
      * any more: at full spread the gap between them is 463px on a desktop but
      * 96px on a phone, so anything meant to appear in the middle has to have
-     * the middle to itself. The years hold through the un-pin instead, so the
-     * frame is never empty while it is pinned.
+     * the middle to itself. They are gone by `wordsClear`, which is what lets
+     * the photograph have the frame to itself before the years take it.
      */
     gsap.to([leftRef.current, rightRef.current], {
       opacity: 0,
@@ -123,7 +123,7 @@ export default function TitleSpread() {
       scrollTrigger: {
         trigger,
         start: at(trigger, STAGE.wordsOut),
-        end: at(trigger, STAGE.revealIn),
+        end: at(trigger, STAGE.wordsClear),
         scrub: true,
       },
     });

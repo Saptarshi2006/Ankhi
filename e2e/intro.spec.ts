@@ -1080,6 +1080,68 @@ const seen = (page: Page, beat: number) =>
     expect(s.text).toContain(String(site.spanTo));
   });
 
+  test("the photograph has the middle of the frame to itself", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    const read = () =>
+      page.evaluate((from: number) => {
+        const words = document.querySelectorAll<HTMLElement>("h1 span")[0];
+        const photo = document.querySelector<HTMLElement>("[data-intro-photo]");
+        const line = [...document.querySelectorAll<HTMLElement>("p")].find((el) =>
+          (el.textContent ?? "").includes(String(from)),
+        );
+        return {
+          words: Number.parseFloat(getComputedStyle(words).opacity),
+          photo: photo ? Number.parseFloat(getComputedStyle(photo).opacity) : -1,
+          line: line ? Number.parseFloat(getComputedStyle(line).opacity) : 0,
+        };
+      }, site.spanFrom);
+
+    const vh = page.viewportSize()!.height;
+
+    /*
+     * Walk the whole span the photograph lives in, and insist it never shares
+     * the middle of the frame with anything else.
+     *
+     * The temptation is to crossfade the photograph in against the departing
+     * words, which is what it did first. It looked fine on a desktop and put
+     * "Happy" straight across the middle of the picture on a phone, because the
+     * parted words leave only 96px of gap there — there is no width in which
+     * both being half-opaque reads as a transition rather than a collision.
+     * So the hand-off is strict, and this is what keeps it strict.
+     */
+    const collisions: string[] = [];
+    let peak = 0;
+
+    for (let step = 0; step <= 40; step += 1) {
+      const vhPos = STAGE.wordsOut + ((STAGE.revealEnd - STAGE.wordsOut) * step) / 40;
+      await jumpTo(page, Math.round(vhPos * vh));
+      await page.waitForTimeout(120);
+      const s = await read();
+
+      expect(s.photo, "the photograph is in the DOM at all").toBeGreaterThanOrEqual(0);
+      peak = Math.max(peak, s.photo);
+
+      if (s.photo > 0.05) {
+        if (s.words > 0.05) collisions.push(`vh=${vhPos.toFixed(2)}: photo ${s.photo} with words ${s.words}`);
+        if (s.line > 0.05) collisions.push(`vh=${vhPos.toFixed(2)}: photo ${s.photo} with years ${s.line}`);
+      }
+    }
+
+    expect(collisions, "the photograph never overlaps the words or the years").toEqual([]);
+    expect(peak, "the photograph is actually seen, not merely present").toBeGreaterThan(0.9);
+
+    // And it is gone for the years, which own the frame from here.
+    await jumpTo(page, Math.round(STAGE.revealEnd * vh));
+    await page.waitForTimeout(800);
+    const s = await read();
+    expect(s.photo).toBeLessThan(0.05);
+    expect(s.line).toBeGreaterThan(0.9);
+  });
+
   test("nothing is fetched until the reader touches something", async ({ page }) => {
     test.slow();
     await page.addInitScript(() => {
