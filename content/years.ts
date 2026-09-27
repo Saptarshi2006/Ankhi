@@ -165,6 +165,3 @@ export const beats: readonly Beat[] = [
   },
 ];
 
-/** Total ages the figure travels across the timeline. */
-export const AGE_FROM = beats[0].ageFrom;
-export const AGE_TO = beats[beats.length - 1].ageTo;

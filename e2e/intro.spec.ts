@@ -880,27 +880,6 @@ const seen = (page: Page, beat: number) =>
     expect(s.title, at).toBe(false);
   });
 
-  test("the figure grows as the reader scrolls", async ({ page }) => {
-    await enterTimeline(page);
-
-    // A number, not toFixed() — that returns a string, and comparing strings
-    // with toBeGreaterThan is nonsense.
-    const headHeight = () =>
-      page.evaluate(() =>
-        Number(
-          document.querySelector(".timeline-figure ellipse")!.getAttribute("ry"),
-        ),
-      );
-
-    const young = await headHeight();
-    await scrollBy(page, 3500, 28);
-    const older = await headHeight();
-
-    // head-to-height shrinks in proportion as the figure lengthens, but the
-    // absolute head grows with the body.
-    expect(older).toBeGreaterThan(young);
-  });
-
   test("the colour travels from the first beat to the last", async ({ page }) => {
     await enterTimeline(page);
     const start = await page.evaluate(() =>
@@ -995,19 +974,33 @@ const seen = (page: Page, beat: number) =>
       ).toBeLessThan(2);
     }
 
-    // And the highlight agrees with it.
-    await expect
-      .poll(
-        async () =>
-          page.evaluate(() => {
-            const labels = document.querySelectorAll<HTMLElement>(".timeline-viewport ol")[0];
-            return [...labels.children].filter(
-              (li) => Number.parseFloat(getComputedStyle(li).opacity) > 0.8,
-            ).length;
-          }),
-        { timeout: 5000 },
-      )
-      .toBe(1);
+    /*
+     * And the highlight flips exactly when the dot arrives at the next age.
+     *
+     * Mid-beat the two are meant to look different: the dot sits *between* two
+     * ages because it travels continuously, while the highlight names the beat
+     * the reader is actually in. So the thing to assert is the boundary, where
+     * they meet.
+     */
+    for (let beat = 1; beat < 6; beat += 1) {
+      // Just inside the beat, not exactly on the boundary: a single pixel either
+      // side of one flips the highlight, and rounding the target can land below
+      // it. The dot's position is continuous so it is checked *on* the
+      // boundary above; this is about which age is named, which only has a
+      // definite answer once you are inside the beat.
+      const s = await at(beat / 6 + 0.03);
+      const lit = await page.evaluate(() => {
+        const labels = document.querySelectorAll<HTMLElement>(".timeline-viewport ol")[0];
+        return [...labels.children].findIndex(
+          (li) => Number.parseFloat(getComputedStyle(li).opacity) > 0.8,
+        );
+      });
+      expect(lit, `just inside beat ${beat} the wrong age is lit`).toBe(beat);
+      // And the dot is between this age and the next, heading for it. Clamped,
+      // because the last beat has no next age to head for.
+      expect(s.dot).toBeGreaterThan(s.centres[beat]);
+      expect(s.dot).toBeLessThan(s.centres[Math.min(5, beat + 1)] + 2);
+    }
   });
 
   test("the six beats run 2007 to 2026", async () => {

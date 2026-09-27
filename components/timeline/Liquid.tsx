@@ -114,9 +114,11 @@ export default function Liquid() {
           paintedIndex = index;
           if (baseRef.current) baseRef.current.style.backgroundColor = hexes[index];
           /*
-           * Published so the figure's column can match it. The column stands
-           * in front of the panels, and without a background the panels would
-           * be visible through it as they slide out behind.
+           * Published on the viewport rather than used directly, so the
+           * takeovers — which live outside the track and are painted over the
+           * whole frame — can inherit the same colour. The journey to the next
+           * beat has to carry on behind the full-screen image rather than
+           * stopping dead.
            */
           viewport?.style.setProperty("--timeline-bg", hexes[index]);
         }

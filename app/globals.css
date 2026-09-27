@@ -99,7 +99,7 @@ body {
   overflow: clip;
 }
 
-/* The track moves; the figure is a watermark behind it, not a column beside. */
+/* The track moves; the panels are what travels. */
 .track-scroll {
   position: relative;
   height: 100%;
@@ -128,27 +128,6 @@ body {
 [data-quad="1"] { top: clamp(58px, 14vmin, 132px); right: 7vmin; }
 [data-quad="2"] { bottom: clamp(26px, 8vmin, 88px); left: 7vmin; }
 [data-quad="3"] { bottom: clamp(26px, 8vmin, 88px); right: 7vmin; }
-
-.timeline-figure {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /*
-   * Behind the scenes and faint. It used to sit in its own column at 0.45,
-   * which meant the scenes had 74% of the screen to be centred in — and every
-   * composition in a beat is a centred one. A watermark keeps it growing in the
-   * reader's peripheral vision without ever competing with a photograph.
-   */
-  pointer-events: none;
-  color: oklch(0.28 0.045 340 / 0.085);
-}
-
-.timeline-figure-svg {
-  height: 78vh;
-  width: 78vw;
-}
 
 /*
  * Scroll lock for the balloon.

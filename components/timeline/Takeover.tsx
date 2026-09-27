@@ -155,8 +155,8 @@ export default function Takeover({
            * Opaque almost immediately. The overlay is sitting exactly on top
            * of the hero for the first instant, so a slow fade-in is not a
            * crossfade at all — it is a translucent full-screen image with the
-           * rail and the figure showing through it, which reads as a bug. By
-           * the time it is clear the grow has barely begun.
+           * rail showing through it, which reads as a bug. By the time it is
+           * clear the grow has barely begun.
            */
           overlay.style.opacity = String(Math.min(1, progress / (holdAt * 0.2)));
           return;

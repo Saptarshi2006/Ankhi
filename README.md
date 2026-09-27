@@ -125,7 +125,7 @@ animation and its position on the page are the same number.
 
 | # | stage | what happens |
 |---|---|---|
-| 0 | `travel` | the track slides to this beat, the figure is at full strength, the colour drips in |
+| 0 | `travel` | the track slides to this beat and the colour drips in |
 | 1 | `title` | the beat's title grows out of the middle of the frame |
 | 2 | `curtain` | a slab of ink crosses the screen, title leaving under it and the year revealed behind it |
 | 3 | `year` | the year, alone |
@@ -141,8 +141,8 @@ about 3.9 screens, so the timeline is ~23 screens and the document ~30.
 
 **The age is not printed anywhere in a beat.** The rail carries the ages
 continuously and highlights the active one; putting `ages 5–9` under the year
-turned the moment into a label. The ages still drive the figure's growth, they
-just aren't type.
+turned the moment into a label. They are still data — the rail reads them — they
+just aren't type on the beat itself.
 
 ### The parts that had to escape the track
 
@@ -162,11 +162,6 @@ found by it visibly failing rather than by reasoning:
   `z-30` was scoped to the track and could never rise above the rail or the
   signature. The wipe swept the photographs and left the chrome floating on top
   of it. It is a sibling of the track too.
-- **The figure**, which gave up its column. It was a column so panels could sit
-  clear of it, which left the scenes 74% of the screen to be centred in — and
-  every composition in a beat is a centred one. Full-width panels make the
-  travel a clean carousel, make the handover exact, and let the figure keep
-  growing as a full-bleed watermark behind everything.
 
 ### Measuring position under a pin
 
@@ -197,9 +192,6 @@ Two related traps, both of which cost a stage or a beat:
   stand still in the middle of the frame, and only moves during the opening
   travel. A single even tween across the pin would slide the panels continuously
   underneath a scene that is supposed to be standing still.
-- **A figure that grows.** Head-to-height runs from about a quarter at birth to
-  about a seventh at nineteen, with the neck appearing around five. Continuous
-  under scrub, not six states.
 - **A colour journey.** Hue travels cool to warm and lands on the same rose the
   intro and the letter use, so the page's colour arc resolves where the love
   letter arrives. The takeover inherits `--timeline-bg`, so the journey carries

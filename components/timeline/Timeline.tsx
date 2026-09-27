@@ -17,7 +17,6 @@ import {
 import Beat from "./Beat";
 import Curtain from "./Curtain";
 import Duotone from "./Duotone";
-import Figure from "./Figure";
 import Liquid from "./Liquid";
 import Rail from "./Rail";
 import Takeover from "./Takeover";
@@ -115,22 +114,6 @@ export default function Timeline() {
       <Duotone />
       <div className="timeline-viewport">
         <Liquid />
-
-        {/*
-          One figure, kept as a full-bleed watermark behind the scenes rather
-          than a column beside them.
-
-          It was a column so panels could sit clear of it, which meant the scenes
-          had 74% of the screen to be centred in — and every composition in a
-          beat is a centred one. With the panel a full viewport wide, "the middle"
-          is the middle, and the figure still keeps growing behind everything.
-
-          One copy, not two: a hidden second would still mount and still write
-          attributes every frame.
-        */}
-        <div className="timeline-figure">
-          <Figure className="timeline-figure-svg" />
-        </div>
 
         {/*
           Full-width panels, contiguous, so the track's travel is a whole number
