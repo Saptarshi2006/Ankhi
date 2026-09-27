@@ -109,17 +109,21 @@ export default function TitleSpread() {
     );
 
     /*
-     * Fade across the un-pin tail only. Fading any earlier leaves the frame
-     * empty while it is still pinned, which is the gap this component used to
-     * have above it when scrolling back up.
+     * F · the words clear out, and the years come up.
+     *
+     * They used to hold until the un-pin and fade over the tail. They cannot
+     * any more: at full spread the gap between them is 463px on a desktop but
+     * 96px on a phone, so anything meant to appear in the middle has to have
+     * the middle to itself. The years hold through the un-pin instead, so the
+     * frame is never empty while it is pinned.
      */
     gsap.to([leftRef.current, rightRef.current], {
       opacity: 0,
       ease: "power1.in",
       scrollTrigger: {
         trigger,
-        start: at(trigger, STAGE.pinnedEnd),
-        end: "bottom bottom",
+        start: at(trigger, STAGE.wordsOut),
+        end: at(trigger, STAGE.revealIn),
         scrub: true,
       },
     });

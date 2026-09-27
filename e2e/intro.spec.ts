@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { beats } from "@/content/years";
+import { site } from "@/content/site";
+import { STAGE } from "@/lib/stage-ranges";
 
 /** Touch devices have no wheel to drive. */
 const isCoarsePointer = (page: Page) =>
@@ -470,6 +472,9 @@ test.describe("deploy config", () => {
     expect(headers).toContain("/photos/*");
     expect(headers).toContain("/videos/*");
     expect(headers).toMatch(/Cache-Control:\s*public, max-age=2592000/);
+    // The crowd beds were shipped with no cache policy at all, the same way the
+    // timeline media was.
+    expect(headers).toContain("/audio/*");
   });
 
   test("wrangler deploys assets only, with no Worker script", () => {
@@ -923,6 +928,230 @@ const seen = (page: Page, beat: number) =>
     // The last beat is the site's rose, so the timeline hands off to the
     // letter on exactly the same colour.
     expect(end).toBe("rgb(253, 242, 240)");
+  });
+
+
+  test("the rail's dot travels and lands on the age it is highlighting", async ({ page }) => {
+    await enterTimeline(page);
+
+    /*
+     * The regression this exists for. The dot was moved with
+     * `translateX(progress * 100%)` — a percentage of its own seven pixels — so
+     * it crawled seven pixels across the whole timeline and the reader could
+     * not tell it from a stuck element. It is positioned with `left` now.
+     *
+     * Asserted against the label centres read from the DOM rather than against
+     * the highlighted label, because the highlight crossfades over 300ms and
+     * mid-transition no label is above the threshold at all. The geometry is
+     * what was broken; the highlight is checked once, separately.
+     */
+    const read = () =>
+      page.evaluate(() => {
+        const dot = document.querySelector<HTMLElement>(
+          ".timeline-viewport span.rounded-full",
+        )!;
+        const track = dot.parentElement!.getBoundingClientRect();
+        const labels = document.querySelectorAll<HTMLElement>(".timeline-viewport ol")[0];
+        const centres = [...labels.children].map((li) => {
+          const r = li.getBoundingClientRect();
+          return r.left + r.width / 2;
+        });
+        const dr = dot.getBoundingClientRect();
+        return {
+          dot: dr.left + dr.width / 2,
+          trackLeft: track.left,
+          trackRight: track.right,
+          centres,
+        };
+      });
+
+    const at = async (fraction: number) => {
+      const y = await page.evaluate((f) => {
+        const spacer = document.querySelector<HTMLElement>("[data-timeline]")!.parentElement!;
+        const top = Math.round(spacer.getBoundingClientRect().top + scrollY);
+        return top + Math.round((spacer.clientHeight - innerHeight) * f);
+      }, fraction);
+      await jumpTo(page, y);
+      await page.waitForTimeout(500);
+      return read();
+    };
+
+    const start = await at(0);
+    const end = await at(1);
+
+    // It moves, and it covers the whole track.
+    expect(end.dot - start.dot).toBeGreaterThan(100);
+    // It never sits outside the track it belongs to.
+    expect(start.dot).toBeGreaterThanOrEqual(start.trackLeft - 1);
+    expect(end.dot).toBeLessThanOrEqual(end.trackRight + 1);
+
+    // At every beat boundary the dot is on that beat's age, to the pixel.
+    for (let beat = 0; beat < 6; beat += 1) {
+      const s = await at(beat / 6);
+      const target = s.centres[beat];
+      expect(
+        Math.abs(s.dot - target),
+        `beat ${beat}: dot is ${(s.dot - target).toFixed(1)}px from its own age`,
+      ).toBeLessThan(2);
+    }
+
+    // And the highlight agrees with it.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const labels = document.querySelectorAll<HTMLElement>(".timeline-viewport ol")[0];
+            return [...labels.children].filter(
+              (li) => Number.parseFloat(getComputedStyle(li).opacity) > 0.8,
+            ).length;
+          }),
+        { timeout: 5000 },
+      )
+      .toBe(1);
+  });
+
+  test("the six beats run 2007 to 2026", async () => {
+    expect(beats.map((b) => b.year)).toEqual([2007, 2012, 2017, 2020, 2023, 2026]);
+    // The last one is the year she turns nineteen, and the first is her first.
+    expect(beats.at(-1)!.year - beats.at(-1)!.ageTo).toBe(2007);
+    // Strictly increasing, so the rail's `key={beat.year}` stays unique.
+    for (let i = 1; i < beats.length; i += 1) {
+      expect(beats[i].year).toBeGreaterThan(beats[i - 1].year);
+    }
+  });
+
+  test("the words clear, and the years then bloom in out of a blur", async ({ page }) => {
+    await page.goto("/");
+    // `scrollBy`, not `page.mouse.wheel`: there is no wheel in mobile WebKit.
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    // `page.evaluate` runs in the page, so the constant has to be passed in
+    // rather than closed over — referencing the import directly throws there.
+    const read = () =>
+      page.evaluate((from: number) => {
+        const words = document.querySelectorAll<HTMLElement>("h1 span")[0];
+        const line = [...document.querySelectorAll<HTMLElement>("p")].find((el) =>
+          (el.textContent ?? "").includes(String(from)),
+        );
+        return {
+          words: Number.parseFloat(getComputedStyle(words).opacity),
+          line: line ? Number.parseFloat(getComputedStyle(line).opacity) : 0,
+          blur: line ? getComputedStyle(line).filter : "",
+          text: line?.textContent?.replace(/\s+/g, " ").trim() ?? "",
+        };
+      }, site.spanFrom);
+
+    const vh = page.viewportSize()!.height;
+
+    // Mid-spread: the words are up, the years are not.
+    await jumpTo(page, Math.round(STAGE.spreadEnd * vh * 0.9));
+    await page.waitForTimeout(700);
+    let s = await read();
+    expect(s.words).toBeGreaterThan(0.8);
+    expect(s.line).toBeLessThan(0.05);
+
+    // The words are fully gone before the years begin. This is not only
+    // compositional: at full spread the gap between them is 463px on a desktop
+    // and 96px on a phone, so anything meant to sit between them is clipped on
+    // the device this site is most likely read on.
+    await jumpTo(page, Math.round(STAGE.revealIn * vh));
+    await page.waitForTimeout(700);
+    s = await read();
+    expect(s.words).toBeLessThan(0.05);
+    expect(s.line).toBeLessThan(0.2);
+
+    // And by the end of the reveal it is sharp, opaque, and says the span.
+    await jumpTo(page, Math.round(STAGE.revealEnd * vh));
+    await page.waitForTimeout(800);
+    s = await read();
+    expect(s.line).toBeGreaterThan(0.9);
+    expect(s.blur).toBe("blur(0px)");
+    expect(s.text).toContain(String(site.spanFrom));
+    expect(s.text).toContain(String(site.spanTo));
+  });
+
+  test("the crowd only starts on a gesture, then swells with the balloon", async ({ page }) => {
+    test.slow();
+    await page.addInitScript(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const audio = { fetches: [] as string[], decoded: [] as number[], gains: [] as AudioNode[] };
+      (w as Record<string, unknown>).__audio = audio;
+      const Real = window.AudioContext;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).AudioContext = class extends Real {
+        constructor(...args: unknown[]) {
+          // @ts-expect-error spreading into a constructor
+          super(...args);
+          const createGain = this.createGain.bind(this);
+          this.createGain = () => {
+            const g = createGain();
+            audio.gains.push(g);
+            return g;
+          };
+          const decode = this.decodeAudioData.bind(this);
+          this.decodeAudioData = async (data: ArrayBuffer) => {
+            const buffer = await decode(data);
+            audio.decoded.push(buffer.duration);
+            return buffer;
+          };
+        }
+      };
+      const fetchImpl = window.fetch.bind(window);
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/audio/")) audio.fetches.push(String(input));
+        return fetchImpl(input, init);
+      };
+    });
+
+    await page.goto("/");
+    await page.waitForTimeout(1200);
+
+    // Scrolling is not a gesture. Nothing may load. Kept well short of the
+    // point the balloon arms, because the tap below would then pop it — and a
+    // popped balloon silences the crowd four seconds later, which is a
+    // perfectly good behaviour and makes for a baffling test.
+    await scrollBy(page, 300, 3);
+    expect(
+      await page.evaluate(() => (window as never as { __audio: { fetches: string[] } }).__audio.fetches),
+    ).toHaveLength(0);
+
+    // One tap unlocks it. Tapped in the middle of the viewport rather than at a
+    // fixed coordinate, so it lands on a phone too.
+    const box = page.viewportSize()!;
+    await page.mouse.click(Math.round(box.width / 2), Math.round(box.height * 0.6));
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => (window as never as { __audio: { fetches: string[] } }).__audio.fetches))
+            .length,
+        { timeout: 10_000 },
+      )
+      .toBe(2);
+
+    // Both beds decoded, and the loop is the length the encoder built.
+    const decoded = await page.evaluate(
+      () => (window as never as { __audio: { decoded: number[] } }).__audio.decoded,
+    );
+    expect(decoded).toHaveLength(2);
+    for (const d of decoded) expect(d).toBeCloseTo(16, 1);
+
+    // The swell: louder *and* brighter, which is what makes it read as a room
+    // filling rather than a volume knob turning.
+    const level = () =>
+      page.evaluate(() => {
+        const g = (window as never as { __audio: { gains: GainNode[] } }).__audio.gains[0];
+        return g ? Number(g.gain.value.toFixed(3)) : 0;
+      });
+
+    const early = await level();
+    await growUntilArmed(page);
+    await page.waitForTimeout(500);
+    const late = await level();
+
+    expect(late).toBeGreaterThan(early + 0.2);
+    expect(late).toBeGreaterThan(0.5);
   });
 
   test("only the final beat stays in full colour", async ({ page }) => {

@@ -28,3 +28,10 @@
 
 /videos/*
   Cache-Control: public, max-age=2592000
+
+# The crowd beds. Same reasoning as the media, for the same reason: the URLs are
+# derived from the source name, so re-encoding does not change a URL that is
+# already cached. The cut and the loudness target are in scripts/encode-audio.mjs
+# — change those and this cache is stale for thirty days.
+/audio/*
+  Cache-Control: public, max-age=2592000

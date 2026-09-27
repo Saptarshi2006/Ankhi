@@ -4,17 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "build": "npm run media && next build",
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "media": "npm run media:placeholders && npm run media:images && npm run media:videos && npm run media:audio",
     "media:placeholders": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-placeholders.mjs",
     "media:images": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/optimize-images.mjs",
     "media:videos": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/encode-videos.mjs",
-    "media": "npm run media:placeholders && npm run media:images && npm run media:videos",
-    "build": "npm run media && next build",
+    "media:audio": "npm run media:audio:fetch && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/encode-audio.mjs",
+    "media:audio:fetch": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/fetch-audio.mjs",
+    "deploy": "npm run build && wrangler deploy",
     "serve": "node scripts/serve.mjs out",
-    "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test",
-    "deploy:dry": "npm run build && wrangler deploy --dry-run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy:dry": "npm run build && wrangler deploy --dry-run"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

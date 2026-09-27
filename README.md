@@ -49,6 +49,64 @@ behave the same on a phone and a desktop. The track height in `globals.css`
 State lives in `components/intro/Intro.tsx` as
 `approach → armed → popping → settled`. Everything else takes props off that.
 
+### The crowd
+
+From the balloon appearing through to "Happy 19th", with a silence in the
+middle. Three parts, all scheduled against the audio clock rather than with
+timers, so the gap is the length it claims to be:
+
+```
+crowd gain → 0 over 120ms  ──┐
+playPop at +130ms           ─┘
+crowd surges back over 900ms, landing as the title arrives
+```
+
+A `setTimeout` between two audio events drifts by however long the main thread
+was busy, and a pop that lands early — on the crowd's tail — does not land.
+
+Loudness **and** brightness both follow the balloon's growth, so it reads as a
+room filling up rather than a volume knob turning. Measured: gain 0.07 → 0.90
+while the lowpass opens 985Hz → 5197Hz.
+
+**Two recordings, not one.** The pre-pop swell is a mid-level murmur; the return
+is a fuller crowd. Coming back out of the silence then reads as the room getting
+bigger rather than the same loop turned up.
+
+### The one thing audio cannot do
+
+Browsers will not start audio from a scroll, and the first click in this design
+is the pop. So whether the pre-pop swell plays at all depends on the reader
+having touched something first — `lib/sound-unlock.ts` takes whichever gesture
+arrives first, and there is no gate in the UI.
+
+On a phone that is nearly always a tap. On a desktop, where the likeliest first
+interaction is a scroll that unlocks nothing, a reader whose only interaction is
+the pop click gets the silence and the pop, and the crowd for the title. That is
+a browser rule rather than a choice; if it turns out to matter, the fix is one
+small visible affordance before the balloon, not a change in `sound-unlock.ts`.
+
+Muted means no `AudioContext` is created at all, rather than one sitting silent.
+
+### The crowd audio itself
+
+Real recordings, not synthesis. A crowd is thousands of overlapping voices, and
+bandpassed noise gets you the shape of one but not the grain — and the grain is
+most of why a stadium sounds like a stadium. The pop stays synthesised, because
+a pop genuinely is two layers.
+
+- `scripts/fetch-audio.mjs` pulls two files from the USC Cinema / Sunset
+  Editorial collection on the Internet Archive, **CC0 1.0** — no attribution, no
+  restriction. Not committed; the fetch script is the record of where they came
+  from.
+- `scripts/encode-audio.mjs` cuts a steady segment from each (chosen by measuring
+  the RMS envelope, to stay off the tape's head and tail) and builds a seamless
+  loop by crossfading the tail into the head.
+- Mono AAC, 80kbps, 16s each: **165KB apiece, 329KB for both**, 9% of the page.
+
+The seams were checked rather than assumed — a hard cut on a diffuse crowd is a
+click every sixteen seconds. The largest sample-to-sample step at the wrap
+(1073, 1563) measures *below* the file's typical step (1302, 1427).
+
 ## The timeline
 
 Sits between the title and the letter. The letter is the emotional peak, so the
@@ -156,6 +214,27 @@ Two related traps, both of which cost a stage or a beat:
   background, photographs and video all shift together. One beat — the present —
   stays in full colour, which is what marks the move from her past to now.
 
+### The rail
+
+The ages along the top, and a dot that says where she has got to.
+
+The dot was moved with `translateX(progress * 100%)` — a percentage of *its own
+seven pixels* — so it crawled seven pixels across the entire timeline and read
+as broken. It is positioned with `left` now, and three things had to line up:
+
+- The track is inset by half a column (100/12) at each end, so its `0%` and
+  `100%` land on the *centres* of the first and last age rather than on the ends
+  of the line.
+- The position divides by `count - 1`, not `count`. Six labels have five gaps
+  between them, so their centres sit at 0%, 20%, 40%…100% of the track.
+- The split clamps to `count - 1` *before* taking `active` and `within`. At the
+  end of the timeline `exact` reaches `count`, and pulling `active` back left
+  `within` at 1, which threw the dot a whole column past the final age.
+
+The dot and the highlighted label come from the same number, so arriving at a
+beat puts the dot on that beat's age exactly — asserted to within 2px at every
+boundary, on both viewports.
+
 ### Tests
 
 Each stage boundary has a test, and they read the geometry the scene publishes
@@ -185,6 +264,23 @@ forecast — a smooth gradient is trivially compressible and real home footage i
 not. Plan against roughly 3.6MB on mobile and 9MB on desktop for real
 eight-second clips, and treat `startSec` / `endSec` as editorial: trimming is
 the lever on all of it.
+
+### The years, after the title
+
+Once "Happy" and "19th" have parted, the words fade across the last of the
+spread and the span of the whole timeline blooms in behind them: `blur(14px)` to
+sharp, scaled from 0.92, faded up, all scrubbed from the centre.
+
+A blur rather than a plain fade, because at that size a fade reads as a caption
+appearing and a blur reads as something coming into focus.
+
+The words clear *first*, and that is not only compositional. At full spread the
+gap between them is **463px on a desktop and 96px on a phone** — one short line
+and nothing more. Anything meant to sit between them is clipped on the device
+this site is most likely read on, so the middle has to be genuinely empty first.
+
+This is why `STAGE.pinnedEnd` moved from 3.2 to 4.0 and `trackVh` from 4.2 to
+5.0. The intro gained 0.8 screens; the document is ~30 screens in total now.
 
 ### After the balloon is gone
 

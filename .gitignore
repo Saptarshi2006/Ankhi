@@ -50,3 +50,9 @@ next-env.d.ts
 /content/media/
 /public/photos/
 /public/videos/
+
+# Crowd audio. Fetched from the Internet Archive by `npm run media:audio:fetch`
+# rather than committed — CC0, but 21MB of tape does not belong in history, and
+# the fetch script is the record of where it came from.
+/content/audio/
+/public/audio/

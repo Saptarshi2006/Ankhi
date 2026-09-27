@@ -7,6 +7,7 @@ import { useGSAP } from "@gsap/react";
 import { STAGE, at } from "@/lib/stage-ranges";
 import Balloon from "./Balloon";
 import Reprise from "./Reprise";
+import RevealLine from "./RevealLine";
 import TitleSpread from "./TitleSpread";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -212,6 +213,12 @@ export default function IntroStage({
         {popped && <Reprise />}
 
         <TitleSpread />
+
+        {/*
+          F · the span of the whole timeline, blooming in once the words have
+          cleared the middle of the frame.
+        */}
+        <RevealLine />
 
         {/*
           Not optional. An unprompted locked scroll is indistinguishable from a

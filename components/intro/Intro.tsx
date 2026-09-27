@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLenis } from "@/lib/smooth-scroll";
 import { useSoundEnabled } from "@/lib/sound-pref";
-import { playPop } from "@/lib/sound";
-import { TITLE_SETTLED_VH } from "@/lib/stage-ranges";
+import { Crowd, playPop } from "@/lib/sound";
+import { useAudioUnlock } from "@/lib/sound-unlock";
+import { STAGE, TITLE_SETTLED_VH } from "@/lib/stage-ranges";
 import Signature from "@/components/Signature";
 import SoundToggle from "@/components/SoundToggle";
 import Timeline from "@/components/timeline/Timeline";
@@ -27,6 +28,33 @@ const GLIDE = 1.2;
 /** How long the balloon's own pop-out tween runs, before the stage settles. */
 const SETTLE = 320;
 
+/**
+ * The gap the pop sits in.
+ *
+ * `SILENCE` is how long the crowd takes to be gone; `POP_AFTER` is how much
+ * longer before the pop fires. Both are in seconds on the audio clock, and the
+ * 10ms between them is deliberate — a pop at the exact instant the crowd hits
+ * zero still has the crowd's tail in its ear.
+ */
+const SILENCE = 0.12;
+const POP_AFTER = 0.13;
+
+/** How long after the intro settles before the crowd lets the timeline have it. */
+const CROWD_FADE_AT = 4200;
+
+/**
+ * How grown the balloon is, 0 to 1, straight from the scroll.
+ *
+ * Read directly rather than off a ScrollTrigger, because it is also needed at
+ * the moment the crowd finishes loading — by which time the reader may be
+ * anywhere.
+ */
+function growthProgress(): number {
+  const span = window.innerHeight * STAGE.growthEnd;
+  if (span <= 0) return 0;
+  return Math.min(1, Math.max(0, window.scrollY / span));
+}
+
 export default function Intro() {
   const lenis = useLenis();
   const soundOn = useSoundEnabled();
@@ -38,6 +66,7 @@ export default function Intro() {
   // capture a stale value from the render that created them.
   const phaseRef = useRef<Phase>("approach");
   const lockedRef = useRef(false);
+  const crowdRef = useRef<Crowd | null>(null);
 
   const setLocked = useCallback(
     (locked: boolean) => {
@@ -76,7 +105,27 @@ export default function Intro() {
     phaseRef.current = "popping";
     setPhase("popping");
     setBurstKey((key) => key + 1);
-    if (soundOn) playPop();
+
+    /*
+     * The silence, then the pop inside it, then the crowd back.
+     *
+     * All three are scheduled against the audio clock rather than with timers,
+     * which is the only way to be sure the gap is the length it claims to be.
+     * A `setTimeout` between two audio events drifts by however long the main
+     * thread was busy, and a pop that lands early — on the tail of the crowd —
+     * does not land at all.
+     */
+    const crowd = crowdRef.current;
+    if (soundOn && crowd) {
+      // Gone by `silent`, the pop lands at `popAt`, and the crowd is handed
+      // back just after it — all three on the same clock.
+      const silent = crowd.silence(SILENCE);
+      const popAt = silent + POP_AFTER;
+      playPop(popAt);
+      crowd.surge(popAt + 0.05, 0.85, 0.9);
+    } else if (soundOn) {
+      playPop();
+    }
 
     /*
      * Release the lock and glide to where the title has finished fading in, so
@@ -99,6 +148,84 @@ export default function Intro() {
       setPhase("settled");
     }, SETTLE);
   }, [setLocked, soundOn, lenis]);
+
+  /*
+   * Load the crowd, and unlock on the first gesture.
+   *
+   * Audio cannot start from a scroll, and the first click in this design is the
+   * pop — so whether the pre-pop swell ever plays depends on the reader
+   * happening to touch something first. See `sound-unlock.ts` for what that
+   * trade actually means.
+   */
+  const unlock = useCallback(() => {
+    if (!soundOn) return;
+    void Crowd.load().then((crowd) => {
+      if (!crowd) return;
+      crowd.setMuted(false);
+      crowd.reset();
+      /*
+       * Catch the crowd up to wherever the balloon has already got to.
+       *
+       * Without this the swell is a one-way street: `onUpdate` only fires while
+       * the scroll is inside the growth range, so a reader whose audio finished
+       * loading after they had already scrolled past it — or who tapped late —
+       * got a crowd that stayed at zero for the rest of the intro. Measured:
+       * gain 0 before the pop and 0 after, having never once been non-zero.
+       */
+      crowd.setIntensity(growthProgress());
+      crowdRef.current = crowd;
+    });
+  }, [soundOn]);
+
+  useAudioUnlock(unlock, soundOn);
+
+  useEffect(() => () => crowdRef.current?.dispose(), []);
+
+  // Mute follows the preference, including mid-swelling.
+  useEffect(() => {
+    crowdRef.current?.setMuted(!soundOn);
+  }, [soundOn]);
+
+  /*
+   * The swell.
+   *
+   * Loudness *and* brightness both follow the balloon's growth, so it reads as a
+   * room filling up rather than a volume knob being turned. Past `growthEnd` it
+   * holds at full and stops following the scroll: from there the reader is on
+   * their own, and the prompt is what they are reading.
+   */
+  useEffect(() => {
+    const stage = document.querySelector<HTMLElement>(".track-stage");
+    if (!stage || !soundOn) return;
+
+    const trigger = ScrollTrigger.create({
+      trigger: stage,
+      start: 0,
+      end: () => Math.round(window.innerHeight * STAGE.growthEnd),
+      scrub: true,
+      invalidateOnRefresh: true,
+      onUpdate: () => {
+        const crowd = crowdRef.current;
+        if (!crowd) return;
+        if (phaseRef.current === "popping" || phaseRef.current === "settled") return;
+        crowd.setIntensity(growthProgress());
+      },
+    });
+
+    return () => trigger.kill();
+  }, [soundOn]);
+
+  /*
+   * Let the crowd go once the intro is behind us, so the timeline is quiet.
+   * Without this a stadium keeps murmuring under six years of somebody's life.
+   */
+  useEffect(() => {
+    if (phase !== "settled") return;
+    const id = window.setTimeout(() => {
+      crowdRef.current?.setIntensity(0);
+    }, CROWD_FADE_AT);
+    return () => window.clearTimeout(id);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "armed") return;

@@ -43,6 +43,10 @@ export type Beat = {
   /** Inclusive age range this beat covers. */
   ageFrom: number;
   ageTo: number;
+  /**
+   * The year this beat's age band began, so the six run 2007 → 2026 and the
+   * last one lands exactly on the year she turned nineteen.
+   */
   year: number;
   title: string;
   /** One sentence: what changed. This is the beat, not the title. */
@@ -65,7 +69,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 0,
     ageTo: 4,
-    year: 2011,
+    year: 2007,
     title: "Before There Were Words",
     turn: "You were entirely a person before you were entirely yourself.",
     colour: "oklch(0.965 0.016 245)",
@@ -80,7 +84,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 5,
     ageTo: 9,
-    year: 2016,
+    year: 2012,
     title: "The Chair by the Window",
     turn: "You decided where you sat, and nobody moved you.",
     herWords: "I'm not coming in.",
@@ -96,7 +100,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 10,
     ageTo: 12,
-    year: 2021,
+    year: 2017,
     title: "The Year That Changed",
     turn: "Something happened that I still don't know the whole shape of.",
     herWords: "It's fine. Everything's fine.",
@@ -112,7 +116,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 13,
     ageTo: 15,
-    year: 2024,
+    year: 2020,
     title: "The Year You Stopped Explaining",
     turn: "You stopped telling people why you felt things, and started just feeling them.",
     herWords: "You don't get it. You never get it.",
@@ -128,7 +132,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 16,
     ageTo: 18,
-    year: 2027,
+    year: 2023,
     title: "Almost",
     turn: "Everyone had an opinion about who you were becoming, and you stopped asking them.",
     herWords: "I've got it handled.",
@@ -144,7 +148,7 @@ export const beats: readonly Beat[] = [
   {
     ageFrom: 19,
     ageTo: 19,
-    year: 2030,
+    year: 2026,
     title: "Nineteen",
     turn: "And then, six weeks ago, you let someone new into the middle of it.",
     herWords: "You always do this too much.",
