@@ -42,17 +42,20 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Timeline media. All of it is generated: the sources are committed nowhere
-# (far too large), and the processed output is rebuilt from them. `npm run
-# media` regenerates, and `npm run build` depends on it, so nothing is ever
-# missing — but none of it belongs in history. See content/years.ts for the
-# filename convention.
-/content/media/
+# Processed media. Never committed: this is all build output, regenerated from
+# the committed sources in content/media/ by `npm run build`. See
+# content/years.ts for the filename convention.
 /public/photos/
 /public/videos/
 
-# The score. Full-length commercial masters, far too large for history, and the
-# cut versions in public/audio/ are rebuilt from them by `npm run media:music`.
-# The windows live in content/music.ts.
-/content/audio/
+# The score's cut versions, same reasoning — rebuilt from the committed masters
+# in content/audio/music/ by `npm run media:music`. The windows live in
+# content/music.ts.
 /public/audio/
+
+# content/media/ and content/audio/music/ used to be ignored here, on the
+# grounds that 101MB of photographs and commercial masters did not belong in
+# history. It does now, deliberately: the site is not reproducible without it,
+# and a clone that generates placeholders is a different site. That is ~101MB
+# of history that cannot be cheaply unwritten, so if the sources ever change
+# and the old ones should go, that is a history rewrite — not a normal commit.
