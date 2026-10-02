@@ -21,8 +21,24 @@
   --rose-soft: oklch(0.78 0.105 20);
   --gold: oklch(0.93 0.04 60);
 
-  /* Intro stage height. Must equal STAGE.trackVh × 100vh. */
-  --track-stage: 420vh;
+  /*
+   * Intro stage height. Must equal STAGE.trackVh × 100vh.
+   *
+   * It was 420vh while `STAGE.trackVh` was 5.0 — stale since the balloon and
+   * title were merged into one stage, and nobody caught it because nothing
+   * asserted the two agreed. The arithmetic that mattered: sticky un-pins when
+   * the section's bottom reaches the viewport's, so a 420vh section unpins at
+   * 320vh, which is 3.2 in stage units. `revealIn` 3.4, `revealEnd` 4.0 and
+   * `pinnedEnd` 4.0 all sit past that — so from 3.2 the frame scrolled away
+   * normally while RevealLine was still animating against it, and the years
+   * never bloomed in place. It read as a stretch of ordinary scrolling between
+   * the photograph and the timeline.
+   *
+   * 500vh puts the un-pin at exactly `pinnedEnd`, which is what the ranges have
+   * always assumed. There is now a test that reads this value and compares it
+   * to `STAGE.trackVh`, so the two cannot drift apart again.
+   */
+  --track-stage: 500vh;
   /* The ink the curtain is made of. */
   --curtain: oklch(0.3 0.072 335);
 }

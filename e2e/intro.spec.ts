@@ -323,6 +323,109 @@ test.describe("one continuous stage", () => {
       .toBeGreaterThan(0.95);
   });
 
+  test("the intro stage is exactly as tall as the ranges assume", async ({ page }) => {
+    await page.goto("/");
+
+    /*
+     * The guard for a bug this file spent a long time not catching.
+     *
+     * `--track-stage` was 420vh while `STAGE.trackVh` was 5.0. Nothing asserted
+     * that the two agreed, so the drift went unnoticed and the effect was a
+     * stretch of ordinary scrolling between the photograph and the timeline: a
+     * 420vh section unpins its sticky frame at 320vh, which is 3.2 in stage
+     * units, and `revealIn` 3.4, `revealEnd` 4.0 and `pinnedEnd` 4.0 are all past
+     * it. Every other test still passed, because they read the opacity of things
+     * that were on screen either side of the gap rather than the gap itself.
+     */
+    const { stageVh, declaredVh } = await page.evaluate(() => {
+      const stage = document.querySelector<HTMLElement>(".track-stage")!;
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--track-stage");
+      return {
+        stageVh: stage.getBoundingClientRect().height / window.innerHeight,
+        declaredVh: Number.parseFloat(raw) / 100,
+      };
+    });
+
+    expect(declaredVh, "--track-stage is parsed from CSS").toBe(STAGE.trackVh);
+    expect(stageVh, "the rendered stage is the height the CSS declared").toBeCloseTo(STAGE.trackVh, 1);
+  });
+
+  test("the frame is still pinned at pinnedEnd, and releases after it", async ({ page }) => {
+    await page.goto("/");
+    /*
+     * The balloon has to be popped first. Until it is, the intro holds the
+     * scroll locked a little past `growthEnd`, so a jump to `pinnedEnd` never
+     * gets there and the assertion below passes on a frame that never left —
+     * which is exactly what happened the first time this test was written.
+     */
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    const vh = page.viewportSize()!.height;
+    const frameTop = async () => {
+      await page.waitForTimeout(500);
+      return page.evaluate(() =>
+        Math.round(document.querySelector<HTMLElement>(".sticky-viewport")!.getBoundingClientRect().top),
+      );
+    };
+
+    await jumpTo(page, Math.round(vh * STAGE.pinnedEnd));
+    const atEnd = await frameTop();
+    /*
+      * On `Math.abs`, not `<= 1`. A pinned frame sits at exactly 0 and one that
+      * has scrolled away sits at a large *negative* top, so a one-sided bound
+      * passes both — which is how this assertion managed to be green on the very
+      * 420vh it exists to catch. Measured on a 720px viewport: 500vh puts the
+      * frame at 0 at `pinnedEnd`, 420vh puts it at -576.
+      */
+    expect(
+      Math.abs(atEnd),
+      `the frame is still pinned at pinnedEnd (${vh}×${STAGE.pinnedEnd}), not ${atEnd}px away`,
+    ).toBeLessThanOrEqual(1);
+
+    // Past it, the frame is on its way out — the tail RevealLine fades over.
+    await jumpTo(page, Math.round(vh * (STAGE.pinnedEnd + 0.4)));
+    const after = await frameTop();
+    expect(after, "the frame releases after pinnedEnd").toBeLessThan(-1);
+  });
+
+  test("the photograph fills the frame", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    await jumpTo(page, Math.round(page.viewportSize()!.height * STAGE.photoSettled));
+    await page.waitForTimeout(700);
+
+    const box = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>("[data-intro-photo]")!;
+      const r = el.getBoundingClientRect();
+      const img = el.querySelector("img")!;
+      const ir = img.getBoundingClientRect();
+      return {
+        op: Number.parseFloat(getComputedStyle(el).opacity),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        vw: window.innerWidth,
+        vh: window.innerHeight,
+        imgW: Math.round(ir.width),
+        imgH: Math.round(ir.height),
+        fit: getComputedStyle(img).objectFit,
+      };
+    });
+
+    expect(box.op, "the photograph is showing at photoSettled").toBeGreaterThan(0.9);
+    // Full screen, not a card — this was the bug: it used to be a
+    // content-sized grid cell, which `place-items-center` never stretches.
+    expect(box.w, "it is as wide as the frame").toBeGreaterThanOrEqual(box.vw - 1);
+    expect(box.h, "and as tall as the frame").toBeGreaterThanOrEqual(box.vh - 1);
+    expect(box.imgW, "the image itself fills it").toBeGreaterThanOrEqual(box.vw - 1);
+    expect(box.imgH, "the image itself fills it").toBeGreaterThanOrEqual(box.vh - 1);
+    expect(box.fit, "cropped to fill, not fitted whole").toBe("cover");
+  });
+
   test("no frame inside the stage is ever empty, in either direction", async ({ page }) => {
     await page.goto("/");
 
@@ -1614,6 +1717,64 @@ test("every quadrant image loads, and carries real alt text", async ({ page }) =
   const noAlt = rendered.filter((r) => !r.alt.trim() || r.alt.startsWith("PLACEHOLDER"));
   expect(noAlt.map((r) => `${r.src}: "${r.alt}"`), "real alt text on every photo").toEqual([]);
 });
+
+  test("the letter grows out of the centre, one line at a time", async ({ page }) => {
+    await page.goto("/");
+
+    const lines = page.locator("[data-line]");
+    expect(await lines.count(), "the letter is real content").toBeGreaterThan(8);
+
+    /*
+     * Read a line that has *not* been revealed yet, and look at its words'
+     * from-state.
+     *
+     * A revealed word settles at `translate(0px, 0px)` with `scale: none`, which
+     * is identical whether it grew or slid — so the end state cannot tell the
+     * two apart, and a test written against it passes either way. The from-state
+     * can, and it is stable rather than a timing sample: `gsap.from` applies it
+     * on creation, so a line below the fold is sitting in it, reading
+     * `matrix(0.94, 0, 0, 0.94, 0, 0)` where the slide-up it replaced reads
+     * `matrix(1, 0, 0, 1, 0, 105%)`-ish — scaled on the diagonal against pure
+     * translation.
+     *
+     * And not on the transform origin, which is the obvious thing to reach for
+     * and does not work: GSAP's default origin is already `50% 50%`, so a
+     * `yPercent` slide carries a centred origin too and looks identical on that
+     * axis.
+     */
+    const last = lines.last();
+    await last.scrollIntoViewIfNeeded();
+    // Back up a little so the last lines are below the fold and untriggered.
+    await page.evaluate(() => window.scrollBy(0, -window.innerHeight));
+    await page.waitForTimeout(600);
+
+    const pending = await page.evaluate(() => {
+      const els = [...document.querySelectorAll<HTMLElement>("[data-line] > div[aria-hidden='true']")]
+        .filter((el) => el.textContent?.trim());
+      const tail = els.slice(-30);
+      return tail
+        .map((el) => {
+          const st = getComputedStyle(el);
+          const m = new DOMMatrixReadOnly(st.transform);
+          return {
+            text: (el.textContent ?? "").slice(0, 12),
+            opacity: Number.parseFloat(st.opacity),
+            scaleX: m.a,
+            scaleY: m.d,
+            translateY: Math.round(m.f),
+          };
+        })
+        .filter((w) => w.opacity < 0.9);
+    });
+
+    expect(pending.length, "some words are still unrevealed").toBeGreaterThan(5);
+
+    const translated = pending.filter((w) => Math.abs(w.scaleX - 1) < 0.001 && Math.abs(w.scaleY - 1) < 0.001);
+    expect(
+      translated.slice(0, 5).map((w) => `"${w.text}" scale=${w.scaleX} ty=${w.translateY}`),
+      "every unrevealed word is scaled down, not slid up from below",
+    ).toEqual([]);
+  });
 
 /* ------------------------------------------------------------------ the fun page */
 

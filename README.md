@@ -573,3 +573,57 @@ walks every beat's published geometry, because beat 0 was the one beat nobody ha
 ever asserted, which is exactly why it went unnoticed. The curtain's resting
 *transform* is still not reliable across beats; visibility is what is painted, and
 that is what the tests now check.
+
+### The photograph, full screen
+
+`--track-stage` is `500vh` and must equal `STAGE.trackVh × 100vh`. It was `420vh`
+while `trackVh` had been `5.0` for some time, and nothing asserted that the two
+agreed — which is the only reason it survived so long. The arithmetic: sticky
+un-pins when the section's bottom reaches the viewport's, so a 420vh section
+unpins at 320vh, which is 3.2 in stage units. `revealIn` 3.4, `revealEnd` 4.0 and
+`pinnedEnd` 4.0 are all past that, so from 3.2 the frame scrolled away normally
+while `RevealLine` was still animating against it. It read as a stretch of
+ordinary scrolling between the photograph and the timeline, and the years never
+bloomed in place. On a 720px viewport the frame sits at exactly 0 at `pinnedEnd`
+with 500vh and at −576px with 420vh.
+
+There is now a test that reads the CSS variable and compares it to
+`STAGE.trackVh`, and another that measures the frame's own position at
+`pinnedEnd` rather than trusting the arithmetic. Both were confirmed to fail on
+420vh — the second only after its assertion was fixed, because `top <= 1` is
+satisfied by a frame that has scrolled *away* just as much as by one that is
+correctly pinned. It needed `Math.abs(top)`.
+
+The photograph itself is `absolute inset-0` with `object-cover`. It was a grid
+item, and `place-items-center` does not stretch a grid item, so "fill the frame"
+was never something that cell would give — it was a content-sized card with a
+radius, a shadow and a ring, which is what it looked like. `.sticky-viewport` is
+`position: sticky`, so it is the containing block and `inset-0` covers the
+viewport exactly. The corner is cropped from a 3:4 source into a landscape
+frame, biased to `object-[center_38%]` so the excess falls off the bottom where
+there is only sari and shirt rather than into the top of their heads.
+
+`SoundToggle` at z-50 and `Signature` at z-20 are both above it by fixed
+positioning, which is deliberate: they are chrome, not part of the composition,
+and the sound toggle stays reachable through the whole intro.
+
+### The letter
+
+Per-line triggers, but each line's words now grow out of their own centres rather
+than sliding up from below — the same arrival as the title, the photograph and
+the years, which is what makes the letter the odd one out otherwise. The trigger
+moved from `top 86%` to `top 92%` so the cascade reads as arriving with the
+timeline's handover rather than trickling in over a long scroll.
+
+The lines stay individually triggered. One trigger for the whole letter was the
+obvious simplification and it is wrong on a phone: the letter runs about 250vh
+tall there, so a single staggered timeline animates the lines below the fold
+while they are still off screen, and they have finished by the time the reader
+scrolls to them.
+
+The test asserts on each word's *from*-state scale, not on its finished
+transform — a revealed word settles at `translate(0px, 0px)` with `scale: none`,
+which is identical whether it grew or slid. Nor on `transform-origin`, which is
+the obvious thing to reach for and does not work: GSAP's default origin is
+already `50% 50%`, so a `yPercent` slide carries a centred origin too. Verified
+to fail against the slide-up it replaced.

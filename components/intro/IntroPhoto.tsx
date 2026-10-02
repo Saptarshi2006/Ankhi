@@ -96,42 +96,45 @@ export default function IntroPhoto() {
       ref={frameRef}
       data-intro-photo
       /*
-        The same `col-start-1 row-start-1` cell as the heading and the years, so
-        it lands exactly where they are rather than somewhere approximate.
-        Rendered before `TitleSpread`, so the words paint over it while they are
-        still travelling.
+        Full bleed, and out of the grid.
+
+        `absolute inset-0` rather than the `col-start-1 row-start-1` cell it used
+        to sit in, because that cell is content-sized: `place-items-center` on the
+        sticky viewport does not stretch a grid item, so "fill the frame" was
+        never something the cell would give. `.sticky-viewport` is
+        `position: sticky`, so it is the containing block and `inset-0` covers
+        the viewport exactly.
+
+        The photo is now painted over rather than composed into the frame, which
+        means nothing may be laid over it. The title is opaque at this point and
+        faded out, so there is nothing to lose — and `SoundToggle` at z-50 and
+        `Signature` at z-20 both sit above this by fixed positioning, which is
+        deliberate: they are chrome, not part of the composition, and the sound
+        toggle stays reachable through the whole intro.
       */
-      className="pointer-events-none col-start-1 row-start-1 flex items-center justify-center"
+      className="pointer-events-none absolute inset-0"
       style={{ transformOrigin: "50% 50%" }}
     >
-      <div className="overflow-hidden rounded-[6px] shadow-[0_24px_60px_rgba(120,40,65,0.22)] ring-1 ring-ink/10">
-        <img
-          src={`/photos/${site.introPhoto.id}-1200.webp`}
-          alt={site.introPhoto.alt}
-          width={site.introPhoto.width}
-          height={site.introPhoto.height}
-          /*
-            Capped on both axes, and allowed to be generous on the width axis
-            because the words are already gone by the time this appears — an
-            earlier version had to stay narrow to avoid them, which left it a
-            stamp-sized thumbnail on a phone.
+      <img
+        src={`/photos/${site.introPhoto.id}-1200.webp`}
+        alt={site.introPhoto.alt}
+        width={site.introPhoto.width}
+        height={site.introPhoto.height}
+        /*
+          `object-cover` into a landscape frame from a 3:4 source, so roughly
+          half the height is cropped away — which is the trade for full bleed.
 
-            The `svh` half is what stops it growing taller than the sticky
-            viewport and being clipped by `overflow: clip`, which is what a
-            `vh`-only cap does on a short landscape window. The `vw` half stops
-            it running off the sides on a narrow one.
-          */
-          className="h-[min(70svh,72vw)] w-auto object-cover"
-          loading="eager"
-          decoding="async"
-          /*
-            Eager, and not lazy: this is above the fold of the intro and it is
-            the first thing a returning reader sees, so deferring it just means
-            the middle of the title is briefly empty while it arrives.
-          */
-          fetchPriority="high"
-        />
-      </div>
+          `center 38%` rather than the default centre: the pair are framed in
+          the upper-middle of the original, so biasing the crop upward keeps
+          both faces and lets the excess fall off the bottom, where there is
+          only sari and shirt. Centred would have taken it evenly and started
+          cutting into the top of their heads.
+        */
+        className="h-full w-full object-cover object-[center_38%]"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+      />
     </div>
   );
 }
