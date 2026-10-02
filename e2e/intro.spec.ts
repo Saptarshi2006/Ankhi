@@ -233,8 +233,12 @@ test.describe("balloon intro", () => {
       .toBeGreaterThan(before + 100);
     await waitForScrollSettle(page);
 
-    // Phase F — every line of the letter ends up readable. SplitText emits
-    // divs, and hides them behind the line's own aria-label.
+    // Phase F — every line of the letter ends up readable.
+    //
+    // The lines themselves now, rather than the divs SplitText used to emit
+    // inside them. That plugin is gone — the letter arrives as one block — so
+    // `[data-line] div` matched nothing and this passed vacuously once the
+    // markup changed until the count above caught it.
     //
     // To the end of the document rather than a fixed distance: the timeline is
     // nearly four screens of scroll per beat, so 6000px no longer reaches the
@@ -245,9 +249,18 @@ test.describe("balloon intro", () => {
     await jumpTo(page, bottom);
     await page.waitForTimeout(600);
     await expect(lines(page)).toHaveCount(12);
-    await expect(page.locator("[data-line] div").first()).toHaveCSS("opacity", "1", {
-      timeout: 10_000,
-    });
+    // Every line, not just the first: the whole point is that none of them is
+    // left hidden behind the block's fade. Polled as a list because
+    // `toHaveCSS` resolves to a single element and this locator matches twelve.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>("[data-line]")].map(
+            (l) => Number.parseFloat(getComputedStyle(l).opacity),
+          ),
+        ),
+      )
+      .toEqual(Array.from({ length: 12 }, () => 1));
   });
 
   test("the spread words land inside the viewport, not past its edges", async ({ page }) => {
@@ -1718,62 +1731,145 @@ test("every quadrant image loads, and carries real alt text", async ({ page }) =
   expect(noAlt.map((r) => `${r.src}: "${r.alt}"`), "real alt text on every photo").toEqual([]);
 });
 
-  test("the letter grows out of the centre, one line at a time", async ({ page }) => {
+  test("the letter fits one screen and arrives as one thing", async ({ page }) => {
     await page.goto("/");
-
-    const lines = page.locator("[data-line]");
-    expect(await lines.count(), "the letter is real content").toBeGreaterThan(8);
-
-    /*
-     * Read a line that has *not* been revealed yet, and look at its words'
-     * from-state.
-     *
-     * A revealed word settles at `translate(0px, 0px)` with `scale: none`, which
-     * is identical whether it grew or slid — so the end state cannot tell the
-     * two apart, and a test written against it passes either way. The from-state
-     * can, and it is stable rather than a timing sample: `gsap.from` applies it
-     * on creation, so a line below the fold is sitting in it, reading
-     * `matrix(0.94, 0, 0, 0.94, 0, 0)` where the slide-up it replaced reads
-     * `matrix(1, 0, 0, 1, 0, 105%)`-ish — scaled on the diagonal against pure
-     * translation.
-     *
-     * And not on the transform origin, which is the obvious thing to reach for
-     * and does not work: GSAP's default origin is already `50% 50%`, so a
-     * `yPercent` slide carries a centred origin too and looks identical on that
-     * axis.
-     */
-    const last = lines.last();
-    await last.scrollIntoViewIfNeeded();
-    // Back up a little so the last lines are below the fold and untriggered.
-    await page.evaluate(() => window.scrollBy(0, -window.innerHeight));
+    await page.locator("[data-letter]").scrollIntoViewIfNeeded();
     await page.waitForTimeout(600);
 
-    const pending = await page.evaluate(() => {
-      const els = [...document.querySelectorAll<HTMLElement>("[data-line] > div[aria-hidden='true']")]
-        .filter((el) => el.textContent?.trim());
-      const tail = els.slice(-30);
-      return tail
-        .map((el) => {
-          const st = getComputedStyle(el);
-          const m = new DOMMatrixReadOnly(st.transform);
-          return {
-            text: (el.textContent ?? "").slice(0, 12),
-            opacity: Number.parseFloat(st.opacity),
-            scaleX: m.a,
-            scaleY: m.d,
-            translateY: Math.round(m.f),
-          };
-        })
-        .filter((w) => w.opacity < 0.9);
+    const m = await page.evaluate(() => {
+      const sec = document.querySelector<HTMLElement>("[data-letter]")!;
+      const block = sec.querySelector<HTMLElement>("[data-letter-block]")!;
+      const lines = [...sec.querySelectorAll<HTMLElement>("[data-line]")];
+      const sr = sec.getBoundingClientRect();
+      const br = block.getBoundingClientRect();
+      return {
+        vh: window.innerHeight,
+        secH: Math.round(sr.height),
+        contentH: Math.round(br.height),
+        blockOrigin: getComputedStyle(block).transformOrigin,
+        blockW: Math.round(br.width),
+        blockH: Math.round(br.height),
+        blockTransform: getComputedStyle(block).transform,
+        lineCount: lines.length,
+        // Any inline transform left on a line would mean SplitText is still in.
+        lineTransforms: lines.map((l) => l.style.transform).filter(Boolean),
+        lineOpacity: lines.map((l) => Number.parseFloat(getComputedStyle(l).opacity)),
+      };
     });
 
-    expect(pending.length, "some words are still unrevealed").toBeGreaterThan(5);
+    /*
+     * One screen, and not by a hair.
+     *
+     * The whole letter blooms as a single block, so if the block is taller than
+     * the viewport the reader is watching it arrive at something they cannot
+     * see the whole of, and the lines below the fold are animating while off
+     * screen. Measured before this change it overflowed by 60px on a 1280x720
+     * desktop and 97px on a 390x664 phone.
+     */
+    expect(m.contentH, "the letter's content fits one screen").toBeLessThanOrEqual(m.vh * 0.95);
+    // And it is not scraping the bottom either, or it reads as cramped.
+    expect(m.contentH, "with some room to breathe").toBeGreaterThan(m.vh * 0.4);
 
-    const translated = pending.filter((w) => Math.abs(w.scaleX - 1) < 0.001 && Math.abs(w.scaleY - 1) < 0.001);
-    expect(
-      translated.slice(0, 5).map((w) => `"${w.text}" scale=${w.scaleX} ty=${w.translateY}`),
-      "every unrevealed word is scaled down, not slid up from below",
-    ).toEqual([]);
+    expect(m.lineCount, "the letter is still real content").toBe(12);
+    expect(m.lineTransforms, "no per-line transforms — SplitText is gone").toEqual([]);
+    /*
+     * Numerically, not by string. GSAP resolves `transformOrigin: "50% 50%"` to
+     * pixel values when it builds the tween, so the computed style reads
+     * "640px 420.664px" rather than the 50% 50% that was written — the same trap
+     * as the timeline's word origins.
+     */
+    const [ox, oy] = m.blockOrigin.split(/\s+/).map((v) => Number.parseFloat(v));
+    expect(Math.abs(ox - m.blockW / 2), "it grows out of the middle horizontally").toBeLessThan(2);
+    expect(Math.abs(oy - m.blockH / 2), "and vertically").toBeLessThan(2);
+  });
+
+  test("the letter's lines all arrive together, never in a cascade", async ({ page }) => {
+    await page.goto("/");
+    const sec = page.locator("[data-letter]");
+
+    // Walk up to the block from well below it, sampling the whole approach.
+    await sec.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, -window.innerHeight * 1.5));
+    await page.waitForTimeout(400);
+
+    let sawPartial = false;
+    const samples: string[] = [];
+    for (let step = 0; step <= 12; step += 1) {
+      await page.evaluate((i: number) => {
+        const el = document.querySelector("[data-letter]")!;
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo(0, top - window.innerHeight * (1.5 - i * 0.125));
+      }, step);
+      await page.waitForTimeout(260);
+
+      const ops = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("[data-line]")].map(
+          (l) => Number.parseFloat(getComputedStyle(l).opacity),
+        ),
+      );
+      const shown = ops.filter((o) => o > 0.5).length;
+      if (shown > 0 && shown < ops.length) sawPartial = true;
+      samples.push(`${shown}/${ops.length}`);
+    }
+
+    expect(sawPartial, `lines arrived in a cascade: ${samples.join(" ")}`).toBe(false);
+  });
+
+  test("the photograph is shown whole, over a blurred backdrop", async ({ page }) => {
+    await page.goto("/");
+    await growUntilArmed(page);
+    await page.locator(".sticky-viewport").first().click();
+    await waitForScrollSettle(page);
+
+    await jumpTo(page, Math.round(page.viewportSize()!.height * STAGE.photoSettled));
+    await page.waitForTimeout(700);
+
+    const box = await page.evaluate(() => {
+      const frame = document.querySelector<HTMLElement>("[data-intro-photo]")!;
+      const img = frame.querySelector<HTMLImageElement>("[data-intro-image]")!;
+      const bd = frame.querySelector<HTMLElement>("[data-intro-backdrop]")!;
+      const ir = img.getBoundingClientRect();
+      const br = bd.getBoundingClientRect();
+      return {
+        opacity: Number.parseFloat(getComputedStyle(frame).opacity),
+        fit: getComputedStyle(img).objectFit,
+        // The photograph's own aspect, from its natural size.
+        naturalRatio: img.naturalWidth / img.naturalHeight,
+        boxW: Math.round(ir.width),
+        boxH: Math.round(ir.height),
+        // What `object-contain` actually paints: the frame, letterboxed to the
+        // photograph's aspect. This is the "is it big enough to see" number.
+        paintedW: Math.round(Math.min(ir.width, ir.height * (img.naturalWidth / img.naturalHeight))),
+        paintedH: Math.round(Math.min(ir.height, ir.width * (img.naturalHeight / img.naturalWidth))),
+        backdropW: Math.round(br.width),
+        backdropH: Math.round(br.height),
+        frameW: Math.round(frame.getBoundingClientRect().width),
+        frameH: Math.round(frame.getBoundingClientRect().height),
+        vw: window.innerWidth,
+        vh: window.innerHeight,
+        backdropSrc: bd.getAttribute("src") ?? "",
+      };
+    });
+
+    expect(box.opacity, "the photograph is showing").toBeGreaterThan(0.9);
+    /*
+     * `contain` *is* the no-crop guarantee — it is defined as never cropping.
+     * Asserting the element's aspect ratio would be measuring the letterbox box
+     * rather than the picture, which is how the previous version of this test
+     * failed on the correct markup.
+     */
+    expect(box.fit, "shown whole, never cropped").toBe("contain");
+    // ...and it is still a picture you can see, not a stamp in the middle.
+    expect(box.paintedH, "the photograph fills most of the frame's height").toBeGreaterThanOrEqual(box.vh * 0.75);
+    // A 3:4 portrait cannot be wider than `height x 3/4` on a landscape screen,
+    // so the ceiling is whatever its aspect and the frame allow — not the full
+    // viewport width. What must hold is that it uses all of that, not less.
+    const widest = Math.min(box.vw, box.vh * box.naturalRatio);
+    expect(box.paintedW, "and uses all the width its aspect allows").toBeGreaterThanOrEqual(widest - 2);
+    // The frame is still filled, by the backdrop rather than by the image.
+    expect(box.backdropW, "the backdrop fills the width").toBeGreaterThanOrEqual(box.vw - 1);
+    expect(box.backdropH, "and the height").toBeGreaterThanOrEqual(box.vh - 1);
+    expect(box.backdropSrc, "from the pipeline, not a runtime blur").toContain("-bg.webp");
   });
 
 /* ------------------------------------------------------------------ the fun page */

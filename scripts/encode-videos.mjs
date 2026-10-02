@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { beats } from "../content/years.ts";
 import { funTargets } from "../content/fun.ts";
+import { BACKDROP_FILTER } from "./blur-backdrop.mjs";
 
 const run = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -192,7 +193,7 @@ for (const clip of clips) {
       "-frames:v", "1",
       // Scaled up and cropped before the blur, so the softness has something to
       // work with, and darkened so the fitted clip reads as the subject.
-      "-vf", "scale=iw*1.6:ih*1.6,crop=iw/1.15:ih/1.15,gblur=sigma=22,eq=brightness=-0.06:saturation=1.3",
+      "-vf", BACKDROP_FILTER,
       "-q:v", "5",
       backdrop,
     ]);

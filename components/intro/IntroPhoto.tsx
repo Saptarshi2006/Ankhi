@@ -32,6 +32,25 @@ gsap.registerPlugin(ScrollTrigger);
  * them. `autoAlpha` rather than `opacity` so the faded-out state also stops the
  * image being painted at all — otherwise it sits in the frame for the rest of
  * the intro, invisible, still composited.
+ *
+ * **Full screen, and the whole photograph inside it.** The frame is
+ * `absolute inset-0`, not the `col-start-1 row-start-1` grid cell it used to sit
+ * in, because `place-items-center` does not stretch a grid item and so "fill the
+ * frame" was never something that cell would give. `.sticky-viewport` is
+ * `position: sticky`, so it is the containing block and `inset-0` covers the
+ * viewport exactly.
+ *
+ * The photograph is `object-contain` over a blurred copy of itself filling the
+ * rest. The alternative was cropping to cover, which is what this did first: a
+ * 3:4 portrait in a landscape frame throws away more than half the picture, and
+ * on a photograph of two people that is not a cost worth paying. This fills the
+ * frame the same way and loses nothing.
+ *
+ * The backdrop is a pre-blurred file written by `optimize-images.mjs`, not a CSS
+ * `filter: blur()` on a second copy of the image. A full-viewport blur is
+ * recomputed by the compositor for as long as it is on screen, and that is the
+ * one effect on this site that costs frames outright on a phone. Pre-blurring it
+ * at build time means the backdrop costs nothing to paint.
  */
 export default function IntroPhoto() {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -95,42 +114,33 @@ export default function IntroPhoto() {
     <div
       ref={frameRef}
       data-intro-photo
-      /*
-        Full bleed, and out of the grid.
-
-        `absolute inset-0` rather than the `col-start-1 row-start-1` cell it used
-        to sit in, because that cell is content-sized: `place-items-center` on the
-        sticky viewport does not stretch a grid item, so "fill the frame" was
-        never something the cell would give. `.sticky-viewport` is
-        `position: sticky`, so it is the containing block and `inset-0` covers
-        the viewport exactly.
-
-        The photo is now painted over rather than composed into the frame, which
-        means nothing may be laid over it. The title is opaque at this point and
-        faded out, so there is nothing to lose — and `SoundToggle` at z-50 and
-        `Signature` at z-20 both sit above this by fixed positioning, which is
-        deliberate: they are chrome, not part of the composition, and the sound
-        toggle stays reachable through the whole intro.
-      */
       className="pointer-events-none absolute inset-0"
       style={{ transformOrigin: "50% 50%" }}
     >
+      <img
+        src={`/photos/${site.introPhoto.id}-bg.webp`}
+        alt=""
+        aria-hidden="true"
+        data-intro-backdrop
+        className="absolute inset-0 h-full w-full object-cover blur-xl"
+        style={{ transform: "scale(1.1)" }}
+        loading="eager"
+        decoding="async"
+      />
       <img
         src={`/photos/${site.introPhoto.id}-1200.webp`}
         alt={site.introPhoto.alt}
         width={site.introPhoto.width}
         height={site.introPhoto.height}
+        data-intro-image
         /*
-          `object-cover` into a landscape frame from a 3:4 source, so roughly
-          half the height is cropped away — which is the trade for full bleed.
-
-          `center 38%` rather than the default centre: the pair are framed in
-          the upper-middle of the original, so biasing the crop upward keeps
-          both faces and lets the excess fall off the bottom, where there is
-          only sari and shirt. Centred would have taken it evenly and started
-          cutting into the top of their heads.
+          `h-full w-full object-contain`: the element fills the frame and the
+          photograph is fitted *inside* it, unscaled-in-place. Not `h-full
+          w-auto`, which pins the height and then letterboxes the width — the
+          element box ends up the frame's proportions while the picture inside is
+          correct, which is a confusing thing to assert against later.
         */
-        className="h-full w-full object-cover object-[center_38%]"
+        className="relative h-full w-full object-contain"
         loading="eager"
         decoding="async"
         fetchPriority="high"

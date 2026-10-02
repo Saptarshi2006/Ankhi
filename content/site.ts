@@ -31,4 +31,21 @@ export const site = {
     width: 1200,
     height: 1600,
   },
+
 } as const;
+
+/**
+ * Images shown whole, filling the screen, with a blurred copy of themselves
+ * filling whatever is left over.
+ *
+ * A separate export rather than a field on `site`, because it is a fact about
+ * the layout and not about the person: the same photograph can be a cropped
+ * corner in the timeline and an uncropped full-screen hero in the intro, and
+ * only one of those needs a backdrop. `optimize-images.mjs` reads this list and
+ * writes a `-bg.webp` for each entry, so adding one is a single line here.
+ *
+ * A 3:4 source in a landscape frame leaves the sides empty and this is what
+ * fills them. The alternative, cropping to cover, throws away most of a portrait
+ * frame — which on a photograph of two people is not a cost worth paying.
+ */
+export const fullBleedImages: readonly string[] = ["intro-0"];

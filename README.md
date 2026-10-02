@@ -437,9 +437,18 @@ effect, so the start state lands before paint. Putting it in CSS instead would
 leave the letter invisible if the JS bundle failed — the letter is the one thing
 on this site that must never be missing.
 
-**SplitText is scoped to the letter.** The title uses two hand-written spans;
-SplitText exists for the per-line word stagger, and the rewrite emits `<div>`s
-(the line keeps its own `aria-label`, fragments are `aria-hidden`).
+**SplitText is not used anywhere.** It existed for the letter's per-line word
+stagger. The letter now arrives as one block and the title uses two hand-written
+spans, so nothing is left for it to do. The lines are plain `<p>`s carrying their
+own `aria-label`, which is better for a screen reader than fragments marked
+`aria-hidden` inside a labelled parent.
+
+**The photograph's backdrop is pre-blurred at build time, not blurred in CSS.**
+`optimize-images.mjs` writes a `-bg.webp` for every id in `fullBleedImages`
+(`content/site.ts`), and `IntroPhoto` stacks it under an `object-contain` image.
+A `filter: blur()` on a second copy would make the compositor re-blur a full
+viewport of pixels for as long as it is on screen — the same reason the balloon's
+dim is a vignette rather than a `backdrop-filter`.
 
 ## Adding the next section
 
@@ -609,21 +618,39 @@ and the sound toggle stays reachable through the whole intro.
 
 ### The letter
 
-Per-line triggers, but each line's words now grow out of their own centres rather
-than sliding up from below — the same arrival as the title, the photograph and
-the years, which is what makes the letter the odd one out otherwise. The trigger
-moved from `top 86%` to `top 92%` so the cascade reads as arriving with the
-timeline's handover rather than trickling in over a long scroll.
+**One arrival, not twelve.** The letter blooms as a single block: `autoAlpha`,
+`scale: 0.92` and `blur(12px)` on `[data-letter-block]`, easing out from
+`50% 50%`. Per-line triggers and `SplitText` are gone.
 
-The lines stay individually triggered. One trigger for the whole letter was the
-obvious simplification and it is wrong on a phone: the letter runs about 250vh
-tall there, so a single staggered timeline animates the lines below the fold
-while they are still off screen, and they have finished by the time the reader
-scrolls to them.
+That is a reversal, and the reasoning is worth keeping because the other way was
+tried first. Per-line triggers are right on a long scrolling page — a letter that
+runs 250vh on a phone staggers its lines below the fold while they are still off
+screen, and they have all finished by the time the reader scrolls to them, so it
+reads as a trickle. But this letter measures 597px on a 1280x720 desktop and
+565px on a 390x664 phone, which **fits one screen at both sizes**, and once it
+fits, the per-line machinery has no job left. Twelve lines staggering in was
+twelve arrivals; the brief was one.
 
-The test asserts on each word's *from*-state scale, not on its finished
-transform — a revealed word settles at `translate(0px, 0px)` with `scale: none`,
-which is identical whether it grew or slid. Nor on `transform-origin`, which is
-the obvious thing to reach for and does not work: GSAP's default origin is
-already `50% 50%`, so a `yPercent` slide carries a centred origin too. Verified
-to fail against the slide-up it replaced.
+**Triggered on the block, not the section.** The section is full-width and carries
+the padding, so anchoring to it resolved `transformOrigin: "50% 50%"` to the
+*section's* middle — 640px on a 1280 screen where the letter itself is 544px wide,
+and 420px down a block whose middle is nearer 300. It grew from a point that was
+not its own middle. Origin and trigger are now the same element and cannot
+disagree.
+
+`start: "center 72%"`, not `"center center"` and not the old `"top 86%"`.
+Measured in viewports of scroll: the final clip is fully faded by 28.6, its last
+pixel leaves the frame by 29.3, and the bloom fires at 29.17. At `"center
+center"` it fired at 29.39 — after the clip had gone — leaving about 140px of
+dead scroll between the last clip and the letter, which read as a blank frame.
+`"top 86%"` failed differently: the letter's centre is still ~240px below the fold
+on a desktop, so the bloom began from somewhere the reader could not see.
+
+`transformOrigin` is asserted **numerically**, never as the string `"50% 50%"`.
+GSAP resolves it to pixels when it builds the tween, so the computed style reads
+`640px 420.664px`. The same trap applies to the timeline's word origins.
+
+**The one-screen assertion measures the block at rest.** The letter sits ~29
+viewports down the page, so `scrollIntoViewIfNeeded` plus a short wait catches it
+mid-*from* at `scale: 0.92` — 549px, not 597px. The test jumps to the end of the
+document and waits, so the number it checks is the settled one.

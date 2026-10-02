@@ -15,6 +15,8 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import { join, dirname, extname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { fullBleedImages } from "../content/site.ts";
+import { BACKDROP_QUALITY } from "./blur-backdrop.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MEDIA = join(ROOT, "content", "media");
@@ -52,6 +54,7 @@ const files = (await readdir(MEDIA)).filter((f) =>
 
 let written = 0;
 let cached = 0;
+let backdrops = 0;
 
 for (const file of files) {
   const id = basename(file, extname(file));
@@ -73,7 +76,39 @@ for (const file of files) {
 
     written += 1;
   }
+
+  /*
+   * A blurred backdrop, for the images that are shown whole over one.
+   *
+   * Those are named in `content/site.ts` rather than guessed at here, because
+   * "is this one full-bleed" is a fact about the layout and not about the file:
+   * the same picture can be a cropped corner thumbnail in the timeline and an
+   * uncropped full-screen hero in the intro. Adding one is a line in that file.
+   *
+   * At the largest width only, since this is one per image and it is always
+   * scaled to fill a viewport.
+   */
+  if (fullBleedImages.includes(id)) {
+    const backdrop = join(OUT, `${id}-bg.webp`);
+    if (await newer(source, backdrop)) {
+      await sharp(source)
+        .rotate()
+        // Blur before the resize: blurring at source resolution and then
+        // downscaling is smoother than downscaling and then blurring, and it is
+        // the difference between a soft backdrop and one that is visibly soft
+        // in steps.
+        .blur(22)
+        .resize({ width: WIDTHS[WIDTHS.length - 1], withoutEnlargement: false })
+        .modulate({ brightness: 0.94, saturation: 1.3 })
+        .webp({ quality: BACKDROP_QUALITY, effort: 5 })
+        .toFile(backdrop);
+      backdrops += 1;
+    }
+  }
 }
 
 console.log(`photos → public/photos  (${WIDTHS.join(", ")}px)`);
 console.log(`  ${written} written, ${cached} already current, from ${files.length} sources`);
+if (fullBleedImages.length > 0) {
+  console.log(`  ${backdrops} blurred backdrop${backdrops === 1 ? "" : "s"} for ${fullBleedImages.join(", ")}`);
+}
