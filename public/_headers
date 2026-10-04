@@ -1,0 +1,42 @@
+# Cloudflare Workers custom headers, applied at deploy time.
+#
+# Next.js copies everything in `public/` to the root of the static export, so
+# this file ships as `out/_headers` and Workers picks it up automatically.
+#
+# Without it, hashed assets under /_next/static/ are served as
+# `cache-control: public, max-age=0, must-revalidate` — so every returning
+# visitor revalidates and re-downloads the whole ~1.2MB of JS, CSS and fonts.
+# Those filenames contain a content hash, so they can never change meaning and
+# are safe to cache indefinitely.
+#
+# HTML is deliberately left alone: it keeps the default `max-age=0,
+# must-revalidate`, which is what you want for a document that changes.
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/favicon.ico
+  Cache-Control: public, max-age=86400
+
+# Timeline media. Cached hard, but for a fixed window rather than immutably:
+# these filenames are derived from the source (`y1-a.jpg` -> `y1-a-1200.webp`),
+# so replacing a source file does not change the URL that was already cached.
+# Thirty days is the compromise. When you swap real media in, either rename the
+# source or purge the cache, or the old clip keeps being served until it lapses.
+/photos/*
+  Cache-Control: public, max-age=2592000
+
+/videos/*
+  Cache-Control: public, max-age=2592000
+
+# The crowd beds. Same reasoning as the media, for the same reason: the URLs are
+# derived from the source name, so re-encoding does not change a URL that is
+# already cached. The cut and the loudness target are in scripts/encode-audio.mjs
+# — change those and this cache is stale for thirty days.
+/audio/*
+  Cache-Control: public, max-age=2592000
+
+# Which slots the encoder actually produced. The score reads this before asking
+# for anything, so a build with no music in it requests nothing and logs no 404s.
+/audio/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate

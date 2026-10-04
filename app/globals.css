@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/*
+ * Quantum Rose — a purpose-built 6-token palette.
+ *
+ * A shadcn theme is ~25 tokens for cards, inputs and sidebars. This site has
+ * almost none of those components, so we keep only the tokens that actually
+ * paint something. Written in OKLCH so lightness is perceptually uniform and
+ * the rose ramp stays evenly stepped.
+ *
+ * Note: these are deliberately NOT named `--color-rose*`, which would collide
+ * with Tailwind's built-in rose palette and shadow these values.
+ */
+:root {
+  --bg: oklch(0.97 0.012 30);
+  --surface: oklch(0.99 0.006 30);
+  --ink: oklch(0.28 0.045 340);
+  --ink-muted: oklch(0.52 0.035 345);
+  --rose: oklch(0.68 0.135 15);
+  --rose-deep: oklch(0.55 0.15 10);
+  --rose-soft: oklch(0.78 0.105 20);
+  --gold: oklch(0.93 0.04 60);
+
+  /*
+   * Intro stage height. Must equal STAGE.trackVh × 100vh.
+   *
+   * It was 420vh while `STAGE.trackVh` was 5.0 — stale since the balloon and
+   * title were merged into one stage, and nobody caught it because nothing
+   * asserted the two agreed. The arithmetic that mattered: sticky un-pins when
+   * the section's bottom reaches the viewport's, so a 420vh section unpins at
+   * 320vh, which is 3.2 in stage units. `revealIn` 3.4, `revealEnd` 4.0 and
+   * `pinnedEnd` 4.0 all sit past that — so from 3.2 the frame scrolled away
+   * normally while RevealLine was still animating against it, and the years
+   * never bloomed in place. It read as a stretch of ordinary scrolling between
+   * the photograph and the timeline.
+   *
+   * 500vh puts the un-pin at exactly `pinnedEnd`, which is what the ranges have
+   * always assumed. There is now a test that reads this value and compares it
+   * to `STAGE.trackVh`, so the two cannot drift apart again.
+   */
+  --track-stage: 500vh;
+  /* The ink the curtain is made of. */
+  --curtain: oklch(0.3 0.072 335);
+}
+
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-accent: var(--rose);
+  --color-accent-deep: var(--rose-deep);
+  --color-accent-soft: var(--rose-soft);
+  --color-sheen: var(--gold);
+
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-literata);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-literata), Georgia, "Times New Roman", serif;
+  /* `clip` rather than `hidden`: prevents horizontal scroll without creating a
+     scroll container, which would break `position: sticky` further down. */
+  overflow-x: clip;
+}
+
+/*
+ * The intro stage.
+ *
+ * One tall section holding one `sticky-viewport`, with the balloon and the
+ * heading sharing the frame. Phases A–E are absolute scroll ranges within it
+ * (see `lib/stage-ranges.ts`).
+ *
+ * This has to be a single section. Between two sticky sections there is always
+ * a gap of exactly one viewport — the height of the first frame un-pinning — so
+ * a balloon stage followed by a title stage left the reader scrolling 1280px of
+ * nothing after the pop, and left a hole above the title on the way back up.
+ *
+ * `sticky` (not ScrollTrigger's `pin`) is deliberate: it inserts no spacer
+ * element, so nothing reflows when webfonts land mid-scrub.
+ *
+ * Keep in step with STAGE.trackVh — the last viewport is the tail the frame
+ * scrolls away over, and the title fades across it so it is never empty while
+ * pinned.
+ */
+.track-stage {
+  height: var(--track-stage);
+}
+
+.sticky-viewport {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: clip;
+}
+
+/*
+ * The timeline.
+ *
+ * Pinned with ScrollTrigger's `pin` rather than `sticky`, which is the one
+ * deliberate exception to the rule the intro follows. A horizontal scroller is
+ * exactly one viewport tall and has to stay put for the whole run; `sticky`
+ * would demand a section as tall as its entire horizontal content, which
+ * would be several thousand pixels of nothing to scroll through.
+ */
+.track-timeline {
+  height: 100svh;
+}
+
+.timeline-viewport {
+  position: relative;
+  height: 100%;
+  overflow: clip;
+}
+
+/* The track moves; the panels are what travels. */
+.track-scroll {
+  position: relative;
+  height: 100%;
+}
+
+/*
+ * The four photographs sit in the corners rather than in a centred grid with a
+ * gap, because the middle of the frame has to stay clear: the turn text holds
+ * it, and then the hero pushes out of it. A grid would put its own gap exactly
+ * where the composition is meant to be empty.
+ *
+ * The hero is deliberately allowed to be wider than the gap between them and to
+ * sit over them. It arrives last and has to win, and a hole cut exactly its size
+ * would make the frame look like a template.
+ *
+ * The vertical insets clear the rail at the top and keep clear of the bottom
+ * edge on short viewports, where `vmin` alone would push a photograph under it.
+ */
+[data-quad] {
+  position: absolute;
+  width: min(26vmin, 25vw);
+  height: min(34vmin, 27vh);
+}
+
+[data-quad="0"] { top: clamp(58px, 14vmin, 132px); left: 7vmin; }
+[data-quad="1"] { top: clamp(58px, 14vmin, 132px); right: 7vmin; }
+[data-quad="2"] { bottom: clamp(26px, 8vmin, 88px); left: 7vmin; }
+[data-quad="3"] { bottom: clamp(26px, 8vmin, 88px); right: 7vmin; }
+
+/*
+ * Scroll lock for the balloon.
+ *
+ * Deliberately does NOT set `overflow: hidden` on the root. That does stop the
+ * reader scrolling, but it also changes the document's scrollport, which
+ * re-resolves every `position: sticky` frame — the balloon visibly leaps off
+ * the top of the screen at the exact moment the lock engages.
+ *
+ * Instead: Lenis refuses the input, `touchmove` is swallowed, and the
+ * scrollbar is hidden so there is nothing left to drag.
+ */
+.scroll-locked {
+  scrollbar-width: none;
+  overscroll-behavior: none;
+}
+
+.scroll-locked::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * The room dims as the balloon closes in, so it reads as approaching the
+ * viewer rather than merely growing. A vignette, not a backdrop-filter —
+ * blurring a full-viewport layer on every scroll frame is the one effect here
+ * that would actually cost frames on a phone.
+ */
+.veil {
+  background: radial-gradient(
+    circle at 50% 45%,
+    oklch(0.35 0.09 15 / 0) 18%,
+    oklch(0.35 0.09 15 / 0.55) 100%
+  );
+}
+
+.glow {
+  background: radial-gradient(
+    circle,
+    oklch(0.78 0.105 20 / 0.32),
+    oklch(0.78 0.105 20 / 0) 70%
+  );
+}
+
+@keyframes hint-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pulse-hint {
+  animation: hint-pulse 2.1s ease-in-out infinite;
+}
